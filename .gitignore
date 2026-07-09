@@ -2,6 +2,9 @@
 assets/*.gif
 assets/*.png
 
+# 대화 기록 (원본 JSONL에 민감정보/API키 포함 가능 → 공개 금지)
+transcript/
+
 # 파이썬
 __pycache__/
 *.pyc
