@@ -32,6 +32,7 @@ import creature as C
 from state_engine import StateEngine
 import focus
 import hostinfo
+import physics
 
 # ---- config ----
 U = 5                                   # art-pixel size in device px
@@ -228,22 +229,12 @@ class Pet(QWidget):
             self._render_state = "walk"
 
     def _physics(self):
-        g = 1.4
-        self.vy += g
-        self.x += self.vx
-        self.y += self.vy
-        L, R = self.screen_rect.left(), self.screen_rect.right() - self.w
-        if self.x < L:
-            self.x = L; self.vx = -self.vx * 0.5
-        elif self.x > R:
-            self.x = R; self.vx = -self.vx * 0.5
-        if self.y >= self.floor_y:
-            self.y = self.floor_y
-            self.vy = -self.vy * 0.45
-            self.vx *= 0.6
-            if abs(self.vy) < 2 and abs(self.vx) < 0.6:
-                self.vy = self.vx = 0.0
-                self.mode = "roam"
+        left = self.screen_rect.left()
+        right = self.screen_rect.right() - self.w
+        self.x, self.y, self.vx, self.vy, settled = physics.advance(
+            self.x, self.y, self.vx, self.vy, left, right, self.floor_y)
+        if settled:
+            self.mode = "roam"
         self._render_state = self.claude_state
 
     # ---------- painting ----------
