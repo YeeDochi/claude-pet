@@ -28,6 +28,8 @@ from PyQt6.QtCore import Qt, QTimer, QSocketNotifier, QPoint
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import creature as C
+from state_engine import StateEngine
+import focus
 
 # ---- config ----
 U = 5                                   # art-pixel size in device px
@@ -35,21 +37,6 @@ PAD_X, PAD_Y = 1, 2                     # padding (art px) around creature for p
 FPS = 20
 SOCK_PATH = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "claude-pet.sock")
 ASSETS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets")
-
-# hook event -> creature state
-EVENT_STATE = {
-    "SessionStart":     "idle",
-    "UserPromptSubmit": "thinking",
-    "PreToolUse":       "working",
-    "PostToolUse":      "working",
-    "Notification":     "attention",
-    "Stop":             "celebrate",     # finished -> celebrate briefly, then waiting
-    "SubagentStop":     "working",
-    "SessionEnd":       "idle",
-}
-# priority when several sessions are active (higher wins)
-PRIORITY = {"attention": 5, "error": 4, "working": 3, "thinking": 2,
-            "celebrate": 1, "waiting": 0, "idle": 0}
 
 
 class Pet(QWidget):
@@ -76,10 +63,9 @@ class Pet(QWidget):
 
         self.frame = 0
         self.facing = 1
-        self.claude_state = "idle"          # driven by hooks
-        self.sessions = {}                   # sid -> state
+        self.engine = StateEngine(is_focused=focus.terminal_focused)
+        self.claude_state = "sleeping"       # last state the engine reported
         self.dnd = False                     # do-not-disturb
-        self.state_expiry = 0.0              # for transient states (celebrate)
 
         # movement
         self.mode = "roam"                   # roam | held | thrown
@@ -137,42 +123,16 @@ class Pet(QWidget):
                     pass
 
     def _handle_event(self, ev):
-        name = ev.get("event") or ev.get("hook_event_name") or ""
-        sid = str(ev.get("session") or ev.get("session_id") or "default")
-        st = EVENT_STATE.get(name)
-        if st is None:
-            return
-        if name == "SessionEnd":
-            self.sessions.pop(sid, None)
-        else:
-            self.sessions[sid] = st
-        self._recompute_state()
-
-    def _recompute_state(self):
-        if not self.sessions:
-            self.claude_state = "idle"
-            return
-        top = max(self.sessions.values(), key=lambda s: PRIORITY.get(s, 0))
-        if top == "celebrate":
-            self.state_expiry = time.monotonic() + 1.6
-        self.claude_state = top
+        self.engine.handle(ev, time.monotonic())
 
     # ---------- main loop ----------
     def _tick(self):
         self.frame += 1
         now = time.monotonic()
-
-        # celebrate is transient -> decays to waiting
+        self.claude_state = self.engine.display_state(now)
         eff = self.claude_state
-        if eff == "celebrate" and now > self.state_expiry:
-            # downgrade any lingering celebrate sessions to waiting
-            for k, v in list(self.sessions.items()):
-                if v == "celebrate":
-                    self.sessions[k] = "waiting"
-            self._recompute_state()
-            eff = self.claude_state
 
-        roaming = eff in ("idle", "waiting") and self.mode == "roam" and not self.dnd
+        roaming = eff in ("idle", "sleeping") and self.mode == "roam" and not self.dnd
 
         if self.mode == "thrown":
             self._physics()
@@ -180,6 +140,16 @@ class Pet(QWidget):
             self._roam()
         else:
             # stationary Claude state (working / attention / thinking / ...)
+            if eff == "work_search":
+                # quick random horizontal darts while rummaging
+                if self.target_x is None or abs(self.target_x - self.x) < 4:
+                    span = self.w * 3
+                    self.target_x = min(max(self.x + random.uniform(-span, span),
+                                            self.screen_rect.left()),
+                                        self.screen_rect.right() - self.w)
+                dx = self.target_x - self.x
+                self.facing = 1 if dx > 0 else -1
+                self.x += max(-6, min(6, dx))     # fast step
             self._render_state = eff
 
         self.move(int(self.x), int(self.y))
