@@ -56,10 +56,27 @@ def window_at(px, py, wins):
 
 def top_surface_under(cx, wins, screen_bottom):
     """Y of the highest window top-edge whose horizontal span covers column cx
-    (and is on-screen above the floor); else screen_bottom. This is the surface
-    a falling pet lands on."""
+    (and is on-screen above the floor); else screen_bottom."""
     best = screen_bottom
     for win in wins:
         if win.x <= cx <= win.x + win.w and 0 <= win.y < best:
+            best = win.y
+    return best
+
+
+def support_surface_under(cx, wins, screen_bottom, feet_y, tol=6):
+    """The surface a creature at column cx with its feet at feet_y is resting on.
+
+    Only window tops that are AT or BELOW the feet (within tol) count — the
+    creature can rest on / fall onto them, but never auto-climbs onto a window
+    whose top is above its feet. Among the eligible surfaces the highest
+    (smallest y) wins; the screen floor is the fallback.
+
+    This is the key difference from top_surface_under: standing on the desktop
+    floor, windows above the feet are ignored (no teleport-up), yet a creature
+    dropped/thrown above a window still lands on it."""
+    best = screen_bottom
+    for win in wins:
+        if win.x <= cx <= win.x + win.w and (feet_y - tol) <= win.y < best:
             best = win.y
     return best

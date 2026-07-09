@@ -30,3 +30,22 @@ def test_window_at_and_surface_via_dump():
 def test_window_at_outside_returns_none():
     wins = windows.parse_kwin_dump(SAMPLE)
     assert windows.window_at(5000, 5000, wins) is None
+
+
+def test_support_surface_no_autoclimb_from_floor():
+    # feet on the screen floor, konsole top (200) is far ABOVE the feet ->
+    # must NOT climb: returns the floor, not the window top.
+    wins = windows.parse_kwin_dump(SAMPLE)
+    assert windows.support_surface_under(150, wins, 1080, feet_y=1080) == 1080
+
+
+def test_support_surface_lands_when_above_window():
+    # feet above konsole's top (feet_y=100 < top 200) -> eligible -> lands on it
+    wins = windows.parse_kwin_dump(SAMPLE)
+    assert windows.support_surface_under(150, wins, 1080, feet_y=100) == 200
+
+
+def test_support_surface_stays_on_current_perch():
+    # standing on konsole (feet ~ its top 200) -> keeps resting on it (within tol)
+    wins = windows.parse_kwin_dump(SAMPLE)
+    assert windows.support_surface_under(150, wins, 1080, feet_y=200) == 200

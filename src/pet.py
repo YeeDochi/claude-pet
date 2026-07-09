@@ -53,6 +53,11 @@ STATE_LABELS = {
 # representative animation frame to freeze for each state's tray icon
 _ICON_FRAME = {"work_computer": 100, "walk": 6, "work_search": 4}
 
+# device-px from the pet window's top down to the creature's feet (legs bottom).
+# creature legs bottom ~15.8 art rows; with PAD_Y=2 and U=5: (2 + 15.8) * 5 ≈ 89.
+# used to land the FEET on a window's top edge when perching (not the window box).
+FOOT_Y = 89
+
 
 class _GeomReceiver(QObject):
     """D-Bus object the KWin geometry script pushes window dumps to."""
@@ -329,6 +334,9 @@ class Pet(QWidget):
             pass
 
     def _on_geom(self, dump):
+        if dump == getattr(self, "_last_dump", None):
+            return                       # coalesce identical pushes (cheap anti-spam)
+        self._last_dump = dump
         self._wins = windows.parse_kwin_dump(dump)
         if self._contain is not None:
             self._contain = next(
@@ -350,8 +358,13 @@ class Pet(QWidget):
         right = scr.right() - self.w
         top = scr.top()
         cx = self.x + self.w / 2.0
-        surface = windows.top_surface_under(cx, self._wins, scr.bottom())
-        return left, right, top, surface - self.h
+        feet = self.y + FOOT_Y
+        surface = windows.support_surface_under(cx, self._wins, scr.bottom(), feet)
+        if surface >= scr.bottom():
+            floor = surface - self.h        # screen floor: keep window fully on-screen
+        else:
+            floor = surface - FOOT_Y        # window perch: feet on the top edge
+        return left, right, top, floor
 
     # ---------- painting ----------
     def paintEvent(self, _e):
@@ -598,6 +611,7 @@ class Pet(QWidget):
 
 def main():
     import argparse
+    import signal
     ap = argparse.ArgumentParser()
     ap.add_argument("--session", default="default")
     ap.add_argument("--host", default="unknown")
@@ -608,6 +622,15 @@ def main():
     app.setDesktopFileName("claude-pet")
     app.setQuitOnLastWindowClosed(False)
     pet = Pet(session_id=args.session, host=args.host)
+    # always tear down the KWin geom script — including on `kill`/SIGTERM, which
+    # otherwise skips _cleanup and leaks a script that keeps pushing geometry.
+    app.aboutToQuit.connect(pet._cleanup)
+    signal.signal(signal.SIGTERM, lambda *_: app.quit())
+    signal.signal(signal.SIGINT, lambda *_: app.quit())
+    # wake the interpreter periodically so Python signal handlers run under Qt
+    _sig_timer = QTimer()
+    _sig_timer.timeout.connect(lambda: None)
+    _sig_timer.start(300)
     pet.show()
     sys.exit(app.exec())
 
