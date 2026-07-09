@@ -212,18 +212,27 @@ class Pet(QWidget):
         elif roaming:
             self._roam()
         else:
-            # stationary Claude state (working / attention / thinking / ...)
-            if eff == "work_search":
-                # quick random horizontal darts while rummaging
-                lft, rgt, _t, _f = self._bounds()
-                if self.target_x is None or abs(self.target_x - self.x) < 4:
-                    span = self.w * 3
-                    self.target_x = min(max(self.x + random.uniform(-span, span),
-                                            lft), rgt)
-                dx = self.target_x - self.x
-                self.facing = 1 if dx > 0 else -1
-                self.x += max(-6, min(6, dx))     # fast step
-            self._render_state = eff
+            # stationary Claude state (working / attention / thinking / ...).
+            # still gravity-bound: rest on the surface, and fall if it drops away
+            # (a window closes under us, or we're mid-air) — physics isn't only
+            # for idle/thrown.
+            lft, rgt, _t, floor = self._bounds()
+            if self.y < floor - 2:
+                self.vx = 0.0
+                self.vy = 0.0
+                self.mode = "thrown"          # fall onto the surface, even mid-state
+            else:
+                if eff == "work_search":
+                    # quick random horizontal darts while rummaging
+                    if self.target_x is None or abs(self.target_x - self.x) < 4:
+                        span = self.w * 3
+                        self.target_x = min(max(self.x + random.uniform(-span, span),
+                                                lft), rgt)
+                    dx = self.target_x - self.x
+                    self.facing = 1 if dx > 0 else -1
+                    self.x += max(-6, min(6, dx))     # fast step
+                self.y = floor
+                self._render_state = eff
 
         self.move(int(self.x), int(self.y))
         self.update()
