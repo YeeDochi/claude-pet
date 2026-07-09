@@ -25,3 +25,9 @@ def test_every_state_renders_without_error():
             p = QPainter(img)
             C.draw_creature(p, 0, 0, 6, st, frame)
             p.end()
+
+
+def test_speech_states_have_lines():
+    assert set(C.SPEECH) <= set(C.STATES)
+    for st in C.SPEECH:
+        assert C.SPEECH[st]

@@ -22,6 +22,14 @@ STATES = ("idle", "walk", "work_computer", "work_search", "work_web",
           "work_agent", "work_skill", "thinking", "attention",
           "error", "celebrate", "sleeping")
 
+# short spoken line per communicative state (typed out in a bubble)
+SPEECH = {
+    "thinking": "고민중…",
+    "attention": "이거 맞아?",
+    "celebrate": "다 됐다!",
+    "error": "으악!",
+}
+
 ORANGE   = QColor("#D97757")
 ORANGE_L = QColor("#ECA184")   # top bevel / highlight
 ORANGE_D = QColor("#B0532F")   # legs / bottom shade
@@ -89,7 +97,7 @@ def draw_creature(p, ox, oy, u, state, frame, facing=1):
         bob = _sin(frame, 46, 0.35)
         tilt = _sin(frame, 92, 3.0)               # slow head cant, "hmm"
         eyes = "up"
-        prop = "ponder"
+        prop = "speech"
     elif state == "attention":
         t = (frame % 22) / 22.0
         j = max(0.0, math.sin(t * math.pi)) * 3.2
@@ -97,13 +105,13 @@ def draw_creature(p, ox, oy, u, state, frame, facing=1):
         sx = 1.0 + 0.10 * (j / 3.2)
         sy = 1.0 - 0.12 * (j / 3.2) + 0.12 * (1 - j / 3.2)
         eyes = "wide"
-        prop = "bang"
+        prop = "speech"
     elif state == "error":
         tilt = -16
         bob = 1.5
         baseline_lift = -1.0
         eyes = "x"
-        prop = "dizzy" if (frame % 20) < 10 else "dizzy2"
+        prop = "speech"
     elif state == "celebrate":
         t = (frame % 18) / 18.0
         j = math.sin(t * math.pi) * 5.5
@@ -112,6 +120,7 @@ def draw_creature(p, ox, oy, u, state, frame, facing=1):
         sx = 1.0 - 0.08 * (j / 5.5)
         legphase = 0.5  # tucked
         eyes = "happy"
+        prop = "speech"
     elif state == "sleeping":
         bob = _sin(frame, 50, 0.4)
         eyes = "sleep"
@@ -210,7 +219,7 @@ def draw_creature(p, ox, oy, u, state, frame, facing=1):
         p.fillRect(QRectF(ox + col * u, oy + Y * u, w * u + 0.5, h * u + 0.5), color)
 
     from PyQt6.QtCore import Qt
-    from PyQt6.QtGui import QFont, QPen
+    from PyQt6.QtGui import QFont, QPen, QPainterPath
     if prop == "bulb":
         rect(17.5, 0.6, 3.0, 3.0, BULB)
         rect(18.2, 0.9, 1.2, 1.2, BULB_L)
@@ -298,6 +307,30 @@ def draw_creature(p, ox, oy, u, state, frame, facing=1):
         rect(10.1, 0.1, 0.8, 0.8, BULB_L)                # pom
         if (frame % 30) < 15:
             rect(13.0, 1.4, 0.9, 0.9, BULB_L)            # sparkle
+    elif prop == "speech":
+        phrase = SPEECH.get(state, "")
+        if phrase:
+            n = len(phrase)
+            cyc = frame % (n * 7 + 30)          # type ~1 char / 7 frames, then hold
+            shown = min(n, 1 + cyc // 7)
+            text = phrase[:shown]
+            f = QFont("Sans"); f.setPointSizeF(1.4 * u); f.setBold(True)
+            p.setFont(f)
+            fm = p.fontMetrics()
+            tw = fm.horizontalAdvance(phrase)   # size to the FULL phrase (stable bubble)
+            th = fm.height()
+            pad = 0.7 * u
+            bx = ox + (GRID_W * u - tw) / 2.0
+            by = oy + 0.2 * u
+            path = QPainterPath()
+            path.addRoundedRect(QRectF(bx - pad, by, tw + 2 * pad, th + pad), 5, 5)
+            p.fillPath(path, WHITE)
+            # little tail under the bubble
+            p.fillRect(QRectF(bx + tw / 2.0, by + th + pad - 1, 1.1 * u, 1.0 * u), WHITE)
+            p.setPen(QPen(QColor("#2A2A30")))
+            p.drawText(QRectF(bx - pad, by, tw + 2 * pad, th + pad),
+                       Qt.AlignmentFlag.AlignCenter, text)
+            p.setPen(Qt.PenStyle.NoPen)
 
 
 # ---------- standalone mockup renderer ----------
