@@ -34,7 +34,7 @@ def list_windows(exclude_prefix="claude-pet-", min_size=40):
     if not shutil.which("wmctrl"):
         return []
     try:
-        out = subprocess.check_output(["wmctrl", "-lG"], text=True, timeout=2)
+        out = subprocess.check_output(["wmctrl", "-lGS"], text=True, timeout=2)
     except Exception:
         return []
     result = []

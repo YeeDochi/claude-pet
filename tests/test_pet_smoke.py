@@ -53,3 +53,17 @@ def test_bounds_desktop_vs_contained():
         assert cr <= 300 + 500 and cf <= 400 + 350
     finally:
         p._cleanup()
+
+
+def test_roam_falls_when_surface_dropped_away():
+    p = P.Pet(session_id="rf")
+    try:
+        p._wins = []
+        _l, _r, _t, floor = p._bounds()
+        p.y = floor - 300          # airborne (surface is far below)
+        p.mode = "roam"
+        p.walk_pause = 5           # would have early-returned before the fix
+        p._roam()
+        assert p.mode == "thrown"  # falls instead of teleporting
+    finally:
+        p._cleanup()

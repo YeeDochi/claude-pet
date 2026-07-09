@@ -212,6 +212,14 @@ class Pet(QWidget):
 
     def _roam(self):
         left, right, top, floor = self._bounds()
+        # surface under us dropped away (window closed/moved, or we walked off a
+        # ledge) -> fall to it instead of snapping/teleporting.
+        if self.y < floor - 2:
+            self.vx = 0.0
+            self.vy = 0.0
+            self.mode = "thrown"
+            self.target_x = None
+            return
         if self.walk_pause > 0:
             self.walk_pause -= 1
             self.y = floor
@@ -234,14 +242,7 @@ class Pet(QWidget):
             self.facing = 1 if dx > 0 else -1
             self.x += speed * self.facing
             self._render_state = "walk"
-        # follow the surface: step up onto ledges, fall off edges naturally
-        if self.y < floor - 2:
-            self.vx = 0.0
-            self.vy = 0.0
-            self.mode = "thrown"          # let physics drop us to the surface below
-            self.target_x = None
-        else:
-            self.y = floor
+        self.y = floor
 
     def _physics(self):
         left, right, top, floor = self._bounds()
