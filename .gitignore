@@ -1,0 +1,8 @@
+# 라이선스 불명 아트는 커밋 금지 (로컬 개발용으로만 사용)
+assets/*.gif
+assets/*.png
+
+# 파이썬
+__pycache__/
+*.pyc
+.venv/

@@ -1,0 +1,290 @@
+"""claude-pet original creature renderer.
+
+Pure-code pixel-art creature (no image assets), animated by state.
+Original artwork (CC0). Style: horizontal orange pixel loaf with 4 stubby legs,
+dash eyes, and a two-notch "crown" on top echoing the Claude Code block logo.
+
+Public API:
+    draw_creature(painter, ox, oy, u, state, frame, facing=1)
+        painter : QPainter
+        ox, oy  : top-left of the creature's bounding box (device px)
+        u       : pixel unit size (each art "pixel" is u x u device px)
+        state   : one of STATES
+        frame   : monotonic animation tick (int, ~20fps)
+        facing  : +1 faces right, -1 faces left
+    GRID_W, GRID_H : bounding size in art pixels (multiply by u for device px)
+"""
+import math
+from PyQt6.QtGui import QColor
+from PyQt6.QtCore import QRectF
+
+STATES = ("idle", "walk", "working", "thinking", "attention", "error", "celebrate", "waiting")
+
+ORANGE   = QColor("#D97757")
+ORANGE_L = QColor("#ECA184")   # top bevel / highlight
+ORANGE_D = QColor("#B0532F")   # legs / bottom shade
+EYE      = QColor("#2A2018")
+BULB     = QColor("#FFD86B")
+BULB_L   = QColor("#FFF0B8")
+WHITE    = QColor("#FFFFFF")
+BANG     = QColor("#D0402E")
+ZTXT     = QColor("#EFE7DF")
+
+GRID_W, GRID_H = 22, 17   # art-pixel bounding box (incl. room above for props/bounce)
+
+
+def _sin(frame, period, amp, phase=0.0):
+    return math.sin((frame / period + phase) * 2 * math.pi) * amp
+
+
+def draw_creature(p, ox, oy, u, state, frame, facing=1):
+    """Draw the creature. All coordinates are in art pixels * u."""
+    p.setPen(p.pen())  # no-op keep
+    from PyQt6.QtCore import Qt
+    p.setPen(Qt.PenStyle.NoPen)
+
+    # ---- per-state rig parameters ----
+    bob = 0.0          # whole-body vertical offset (art px)
+    sx, sy = 1.0, 1.0  # squash/stretch
+    tilt = 0.0         # degrees
+    legphase = 0.0     # 0..1 walk cycle
+    eyes = "open"
+    prop = None
+    front_tap = 0.0    # front legs tapping (working)
+    baseline_lift = 0.0
+
+    if state == "idle":
+        bob = _sin(frame, 34, 0.5)
+        if frame % 90 < 4:
+            eyes = "blink"
+    elif state == "walk":
+        bob = abs(_sin(frame, 12, 0.9))
+        legphase = (frame / 12.0) % 1.0
+        tilt = _sin(frame, 12, 2.0)
+    elif state == "working":
+        bob = _sin(frame, 30, 0.3)                # gentle head bob while typing
+        eyes = "focus"
+        prop = "laptop"
+    elif state == "thinking":
+        bob = _sin(frame, 40, 0.4)
+        eyes = "up"
+        prop = "bulb"
+    elif state == "attention":
+        t = (frame % 22) / 22.0
+        j = max(0.0, math.sin(t * math.pi)) * 3.2
+        bob = j
+        sx = 1.0 + 0.10 * (j / 3.2)
+        sy = 1.0 - 0.12 * (j / 3.2) + 0.12 * (1 - j / 3.2)
+        eyes = "wide"
+        prop = "bang"
+    elif state == "error":
+        tilt = -16
+        bob = 1.5
+        baseline_lift = -1.0
+        eyes = "x"
+        prop = "dizzy" if (frame % 20) < 10 else "dizzy2"
+    elif state == "celebrate":
+        t = (frame % 18) / 18.0
+        j = math.sin(t * math.pi) * 5.5
+        bob = -j
+        sy = 1.0 + 0.12 * (j / 5.5)
+        sx = 1.0 - 0.08 * (j / 5.5)
+        legphase = 0.5  # tucked
+        eyes = "happy"
+    elif state == "waiting":
+        bob = _sin(frame, 50, 0.4)
+        eyes = "sleep"
+        prop = "zzz"
+
+    # arm pose derived from state (arms live on the LEFT/RIGHT sides)
+    arm = {"working": "none", "attention": "up", "celebrate": "up"}.get(state, "side")
+    arm_swing = _sin(frame, 12, 0.5) if state == "walk" else 0.0
+
+    # ---- geometry (art-pixel space), origin at ox,oy ----
+    # body occupies cols 3..18, rows 5..12 ; legs rows 12..15 ; crown rows 3..5
+    cx = GRID_W / 2.0
+
+    def px(col, row, w, h, color):
+        # apply squash/stretch about body center
+        bcx, bcy = 10.5, 9.0
+        X = bcx + (col - bcx) * sx
+        Y = bcy + (row - bcy) * sy + bob + baseline_lift
+        W = w * sx
+        H = h * sy
+        p.fillRect(QRectF(ox + X * u, oy + Y * u, W * u + 0.5, H * u + 0.5), color)
+
+    p.save()
+    # tilt about creature center
+    if tilt:
+        p.translate(ox + cx * u, oy + 10 * u)
+        p.rotate(tilt)
+        p.translate(-(ox + cx * u), -(oy + 10 * u))
+
+    # ---- legs (behind body) ----
+    # 4 legs; walk cycle lifts diagonal pairs (symmetric about body center 10.5)
+    leg_cols = [4.0, 7.5, 11.5, 15.0]
+    for i, lc in enumerate(leg_cols):
+        lift = 0.0
+        if state == "walk":
+            ph = (legphase + (0.5 if i % 2 else 0.0)) % 1.0
+            lift = max(0.0, math.sin(ph * math.pi)) * 1.3
+        if state == "working" and i >= 2:      # front two legs tap
+            lift = front_tap
+        if state == "celebrate":
+            lift = 1.6
+        px(lc, 12.4 - lift, 2.0, 3.4, ORANGE_D)
+
+    # ---- arms: one block per side, body-shade color, drawn behind body ----
+    if arm == "none":
+        pass   # hands are drawn on the laptop (working state)
+    elif arm == "up":
+        # raised out to the sides, up near the shoulders
+        px(1.6, 4.6, 2.1, 1.9, ORANGE_D)
+        px(17.3, 4.6, 2.1, 1.9, ORANGE_D)
+    elif arm == "tap":
+        # dropped down-forward, gently tapping (typing), opposite phase
+        px(2.2, 10.0 + front_tap, 2.1, 1.7, ORANGE_D)
+        px(17.7, 10.0 + (0.8 - front_tap), 2.1, 1.7, ORANGE_D)
+    else:
+        # held straight out to the sides (default), gentle swing while walking
+        px(1.0, 7.9 + arm_swing, 2.2, 1.9, ORANGE_D)
+        px(17.8, 7.9 - arm_swing, 2.2, 1.9, ORANGE_D)
+
+    # ---- body ---- clean square block, dark outline for crisp edges
+    bx0, bx1 = 3.0, 18.0
+    by0, by1 = 5.0, 12.5
+    bw = bx1 - bx0
+    px(bx0, by0, bw, by1 - by0, ORANGE)                # full rectangle
+    px(bx0, by0, bw, 0.9, ORANGE_L)                    # top bevel highlight
+    px(bx0, by1 - 1.0, bw, 1.0, ORANGE_D)              # bottom shade
+
+    # ---- eyes ---- (front-biased; faces right by default)
+    e1, e2 = 5.8, 13.8   # eye columns — wide-set (~2.5x the previous spacing)
+    er = 7.4
+    def eye(col, kind):
+        if kind == "open":
+            px(col, er, 1.4, 1.8, EYE)
+        elif kind == "blink":
+            px(col, er + 1.0, 1.4, 0.6, EYE)
+        elif kind == "sleep":
+            px(col - 0.6, er + 1.0, 2.6, 0.6, EYE)   # wider closed eyes when sleeping
+        elif kind == "focus":
+            px(col, er + 0.6, 1.6, 0.9, EYE)
+        elif kind == "up":
+            px(col, er - 0.4, 1.4, 1.6, EYE)
+        elif kind == "wide":
+            px(col - 0.2, er - 0.4, 1.9, 2.4, EYE)
+        elif kind == "x":
+            px(col, er, 1.7, 0.5, EYE); px(col + 0.6, er - 0.6, 0.5, 1.7, EYE)
+        elif kind == "happy":
+            px(col, er + 0.8, 0.6, 0.6, EYE); px(col + 0.55, er + 0.3, 0.6, 0.6, EYE); px(col + 1.1, er + 0.8, 0.6, 0.6, EYE)
+    eye(e1, eyes); eye(e2, eyes)
+
+    p.restore()
+
+    # ---- props (screen-ish space, not tilted) ----
+    def rect(col, row, w, h, color):
+        Y = row + bob + baseline_lift
+        p.fillRect(QRectF(ox + col * u, oy + Y * u, w * u + 0.5, h * u + 0.5), color)
+
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtGui import QFont, QPen
+    if prop == "bulb":
+        rect(17.5, 0.6, 3.0, 3.0, BULB)
+        rect(18.2, 0.9, 1.2, 1.2, BULB_L)
+        rect(18.3, 3.5, 1.6, 0.8, ORANGE_D)
+    elif prop == "spark":
+        rect(19.0, 6.0, 0.9, 0.9, BULB_L)
+        rect(20.0, 7.2, 0.7, 0.7, BULB)
+        rect(19.3, 8.2, 0.6, 0.6, BULB_L)
+    elif prop == "laptop":
+        # hands drawn FIRST so the screen covers them (they type behind the laptop),
+        # peeking at the sides; bright body color so the motion is visible on the dark lid
+        tapL = _sin(frame, 16, 0.5) + 0.5
+        tapR = _sin(frame, 16, 0.5, 0.5) + 0.5
+        rect(4.8, 10.4 + tapL, 2.0, 1.8, ORANGE_L)
+        rect(14.2, 10.4 + tapR, 2.0, 1.8, ORANGE_L)
+        # laptop lid (back), sitting a bit lower so more of the head shows above
+        rect(6.0, 9.8, 9.0, 3.7, QColor("#4C4C57"))      # screen frame (back)
+        rect(6.6, 10.2, 7.8, 3.0, QColor("#25252B"))     # screen back panel
+        rect(6.2, 13.2, 8.6, 0.5, QColor("#1C1C20"))     # bottom edge on the desk
+        # logo: warm white, slow blink
+        if (frame % 72) < 46:
+            rect(9.5, 11.1, 1.7, 1.2, BULB_L)
+        # intermittent thought bubble that types out . .. ...
+        cyc = frame % 150
+        if 45 <= cyc < 120:
+            n = 1 if cyc < 68 else (2 if cyc < 92 else 3)
+            rect(6.3, 0.2, 7.4, 2.4, WHITE)              # bubble
+            rect(11.6, 2.9, 1.0, 1.0, WHITE)             # trail puff
+            rect(12.4, 4.0, 0.8, 0.8, WHITE)             # trail puff (small)
+            for i in range(n):
+                rect(7.5 + i * 1.7, 1.1, 0.9, 0.9, QColor("#3A3A42"))
+    elif prop == "bang":
+        bxx, byy = 17.5, -0.2
+        rect(bxx, byy, 3.6, 3.2, WHITE)
+        # tail
+        p.fillRect(QRectF(ox + (bxx + 0.4) * u, oy + (byy + 3.0 + bob) * u,
+                          1.0 * u, 1.0 * u), WHITE)
+        # bold pixel "!" (stem + dot), centered in the bubble
+        ex = bxx + 1.3
+        rect(ex, byy + 0.6, 1.0, 1.5, BANG)     # stem
+        rect(ex, byy + 2.35, 1.0, 0.75, BANG)   # dot
+    elif prop in ("dizzy", "dizzy2"):
+        yoff = 0.0 if prop == "dizzy" else 0.6
+        p.setPen(QPen(ZTXT)); f = QFont("Sans"); f.setPointSizeF(1.4 * u); f.setBold(True); p.setFont(f)
+        p.drawText(int(ox + 5 * u), int(oy + (3.0 + yoff) * u), "✦")
+        p.drawText(int(ox + 8 * u), int(oy + (2.4 + yoff) * u), "✦")
+        p.setPen(Qt.PenStyle.NoPen)
+    elif prop == "zzz":
+        p.setPen(QPen(ZTXT))
+        f = QFont("Sans"); f.setPointSizeF(1.2 * u); f.setBold(True); p.setFont(f)
+        p.drawText(int(ox + 18 * u), int(oy + (4.0 + bob) * u), "z")
+        f2 = QFont("Sans"); f2.setPointSizeF(1.8 * u); f2.setBold(True); p.setFont(f2)
+        p.drawText(int(ox + 19.4 * u), int(oy + (2.2 + bob) * u), "Z")
+        p.setPen(Qt.PenStyle.NoPen)
+
+
+# ---------- standalone mockup renderer ----------
+if __name__ == "__main__":
+    import os, sys
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PyQt6.QtGui import QImage, QPainter, QFont, QPen, QGuiApplication
+    from PyQt6.QtCore import Qt, QRectF
+    app = QGuiApplication(sys.argv)
+
+    labels = {"idle": "대기", "walk": "걷기", "working": "작업 중(fixing)",
+              "thinking": "생각(idea)", "attention": "봐줘!(입력대기)", "error": "에러",
+              "celebrate": "완료/신남", "waiting": "대기 오래"}
+    order = ["idle", "walk", "working", "thinking", "attention", "celebrate", "error", "waiting"]
+    # show two animation frames per state to convey motion
+    u = 7
+    cellw, cellh = 210, 190
+    cols = 4
+    rows = (len(order) + cols - 1) // cols
+    W, H = cols * cellw, rows * cellh + 60
+    img = QImage(W, H, QImage.Format.Format_ARGB32); img.fill(QColor("#141416"))
+    p = QPainter(img)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+    p.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
+    p.setPen(QPen(QColor("#ECA184"))); f = QFont("Sans", 15); f.setBold(True); p.setFont(f)
+    p.drawText(QRectF(0, 14, W, 26), Qt.AlignmentFlag.AlignCenter,
+               "claude-pet — 오리지널 크리처 (전부 코드 렌더, CC0)")
+    from PyQt6.QtGui import QPainterPath
+    for i, st in enumerate(order):
+        c = i % cols; r = i // cols
+        x0 = c * cellw; y0 = 50 + r * cellh
+        path = QPainterPath(); path.addRoundedRect(QRectF(x0 + 10, y0 + 10, cellw - 20, cellh - 20), 12, 12)
+        p.fillPath(path, QColor("#26262B")); p.setPen(QPen(QColor("#3A3A42"), 1)); p.drawPath(path)
+        p.setPen(Qt.PenStyle.NoPen)
+        # draw creature roughly centered
+        gx = x0 + (cellw - GRID_W * u) / 2
+        gy = y0 + (cellh - GRID_H * u) / 2 - 6
+        frame = 100 if st == "working" else (6 if st == "walk" else 3)
+        draw_creature(p, gx, gy, u, st, frame)
+        p.setPen(QPen(QColor("#D7D7DC"))); p.setFont(QFont("Sans", 12))
+        p.drawText(QRectF(x0, y0 + cellh - 40, cellw, 24), Qt.AlignmentFlag.AlignCenter, labels[st])
+        p.setPen(Qt.PenStyle.NoPen)
+    p.end()
+    out = "/tmp/claude-1000/-home-ljh/1e61dd01-ce40-4224-af6c-7be72cc88530/scratchpad/creature_sheet.png"
+    img.save(out); print("saved", out)

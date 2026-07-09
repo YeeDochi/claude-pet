@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+"""Register (or remove) claude-pet hooks in ~/.claude/settings.json.
+
+Usage:
+    claude-pet-install-hooks           # install
+    claude-pet-install-hooks --remove  # remove
+
+Backs up settings.json before writing. Idempotent.
+"""
+import json
+import os
+import sys
+import time
+
+SETTINGS = os.path.expanduser("~/.claude/settings.json")
+HOOK = os.path.join(os.path.dirname(os.path.abspath(__file__)), "claude-pet-hook")
+TOOL_EVENTS = ["PreToolUse", "PostToolUse"]
+PLAIN_EVENTS = ["UserPromptSubmit", "Notification", "Stop",
+                "SubagentStop", "SessionStart", "SessionEnd"]
+ALL_EVENTS = TOOL_EVENTS + PLAIN_EVENTS
+
+
+def load():
+    if not os.path.exists(SETTINGS):
+        return {}
+    with open(SETTINGS) as f:
+        return json.load(f)
+
+
+def save(s):
+    os.makedirs(os.path.dirname(SETTINGS), exist_ok=True)
+    if os.path.exists(SETTINGS):
+        os.rename(SETTINGS, f"{SETTINGS}.bak.{int(time.time())}")
+    with open(SETTINGS, "w") as f:
+        json.dump(s, f, indent=2, ensure_ascii=False)
+
+
+def is_ours(group):
+    for h in group.get("hooks", []):
+        if "claude-pet-hook" in h.get("command", ""):
+            return True
+    return False
+
+
+def main():
+    remove = "--remove" in sys.argv
+    s = load()
+    hooks = s.get("hooks", {})
+
+    for ev in ALL_EVENTS:
+        # drop any existing claude-pet groups first (idempotent)
+        hooks[ev] = [g for g in hooks.get(ev, []) if not is_ours(g)]
+        if not remove:
+            cmd = {"type": "command", "command": f"{HOOK} {ev}"}
+            group = {"hooks": [cmd]}
+            if ev in TOOL_EVENTS:
+                group["matcher"] = "*"
+            hooks[ev].append(group)
+        if not hooks[ev]:
+            del hooks[ev]
+
+    if hooks:
+        s["hooks"] = hooks
+    elif "hooks" in s:
+        del s["hooks"]
+
+    save(s)
+    print(("removed" if remove else "installed"), "claude-pet hooks:",
+          ", ".join(ALL_EVENTS))
+    print("(restart Claude Code sessions for changes to take effect)")
+
+
+if __name__ == "__main__":
+    main()
