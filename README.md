@@ -51,6 +51,19 @@ pip install PyQt6
 
 Restart any running Claude Code session so it picks up the new hooks.
 
+## `/claude-pet` skill (optional)
+
+A Claude Code skill to launch a pet on demand from within a session. Enable it
+by linking it into your skills dir:
+
+```bash
+mkdir -p ~/.claude/skills
+ln -s ~/claude-pet/skills/claude-pet ~/.claude/skills/claude-pet
+```
+
+Then type `/claude-pet` (or "펫 띄워") in any session to launch one. This only
+*launches* a pet; the per-session auto-launch still comes from the hooks above.
+
 ## Interaction
 
 - **Drag** to pick it up and throw it — it falls with gravity and bounces.
