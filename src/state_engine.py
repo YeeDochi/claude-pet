@@ -106,6 +106,12 @@ class StateEngine:
         # promote a deferred work state once the current one has held long enough
         if s.pending and s.state in WORK_STATES and (now - s.since) >= DEBOUNCE:
             s.set_state(s.pending, now)
+        # transient states (celebrate/error) decay back to calm idle
+        if s.expiry is not None and now >= s.expiry:
+            s.set_state("idle", now)
+        # calm idle falls asleep after a long quiet spell
+        if s.state == "idle" and (now - s.last_event) >= SLEEP_TIMEOUT:
+            s.state = "sleeping"
 
     def display_state(self, now):
         for s in self.sessions.values():

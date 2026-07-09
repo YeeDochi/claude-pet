@@ -52,3 +52,52 @@ def test_same_tool_repeats_do_not_reset_forever():
     # Grep is also work_search — no visible change, no pending needed
     assert e.display_state(now=0.2) == "work_search"
     assert e.display_state(now=1.0) == "work_search"
+
+
+def test_stop_focused_goes_idle_not_celebrate():
+    e = StateEngine(is_focused=lambda: True)
+    e.handle({"event": "Stop", "session": "a"}, now=0.0)
+    assert e.display_state(now=0.0) == "idle"
+
+
+def test_stop_unfocused_celebrates_then_decays_to_idle():
+    e = StateEngine(is_focused=lambda: False)
+    e.handle({"event": "Stop", "session": "a"}, now=0.0)
+    assert e.display_state(now=0.5) == "celebrate"
+    assert e.display_state(now=1.7) == "idle"      # after CELEBRATE_DUR (1.6s)
+
+
+def test_idle_sleeps_after_timeout():
+    e = StateEngine(is_focused=lambda: True)
+    e.handle({"event": "Stop", "session": "a"}, now=0.0)      # -> idle
+    assert e.display_state(now=10.0) == "idle"
+    assert e.display_state(now=61.0) == "sleeping"            # 60s quiet
+
+
+def test_idle_prompt_sleeps_immediately():
+    e = StateEngine()
+    e.handle({"event": "Notification", "session": "a",
+              "notification_type": "idle_prompt"}, now=0.0)
+    assert e.display_state(now=0.1) == "sleeping"
+
+
+def test_stopfailure_errors_then_decays():
+    e = StateEngine()
+    e.handle({"event": "StopFailure", "session": "a"}, now=0.0)
+    assert e.display_state(now=1.0) == "error"
+    assert e.display_state(now=2.1) == "idle"                 # after ERROR_DUR (2.0s)
+
+
+def test_userpromptsubmit_thinks_then_works():
+    e = StateEngine()
+    e.handle({"event": "UserPromptSubmit", "session": "a"}, now=0.0)
+    assert e.display_state(now=0.0) == "thinking"
+    e.handle({"event": "PreToolUse", "session": "a", "tool_name": "Read"}, now=0.5)
+    assert e.display_state(now=0.5) == "work_search"
+
+
+def test_sessionend_drops_session():
+    e = StateEngine()
+    e.handle({"event": "PreToolUse", "session": "a", "tool_name": "Edit"}, now=0.0)
+    e.handle({"event": "SessionEnd", "session": "a"}, now=0.1)
+    assert e.display_state(now=0.1) == "sleeping"
