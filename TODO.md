@@ -28,6 +28,14 @@
 - [ ] **포커스 판정이 이 머신에서 미작동** — `kdotool` 미설치라 `focus.terminal_focused()`가
       항상 True(보수적) → **celebrate가 절대 안 뜸**. "안 볼 때 완료 알림"을 켜려면
       `kdotool` 설치하거나 KWin 스크립트로 활성창 resourceClass를 읽어오는 fallback 구현 필요.
+- [ ] **호스트 앱 하드코딩 = konsole 전용** — `focus.py`의 `TERMINAL_CLASSES=("konsole",)`와
+      `pet.py._activate_claude`가 konsole 창만 찾음. Claude Code를 VS Code 통합터미널이나
+      IntelliJ 터미널에서 돌리면 (1) 포커스 판정 오류로 celebrate 오발동, (2) 좌클릭해도
+      IDE가 안 뜸. **해법**: `claude-pet-hook`이 프로세스 환경변수로 호스트를 감지해
+      (Konsole=`KONSOLE_VERSION`, VS Code=`TERM_PROGRAM=vscode`/`VSCODE_PID`,
+      JetBrains=`TERMINAL_EMULATOR=JetBrains-JediTerm`) 힌트를 펫에 전달 → 펫이 해당
+      호스트 창 클래스(code / jetbrains-* / konsole ...)로 포커스·활성화를 맞춤.
+      포커스 기능 실제로 켤 때 같이 설계. (플랫폼 이식과도 연결)
 
 ## ✨ 추가할 반응/기능
 - [ ] **오토 진행 중 반응** — auto/plan 진행 등 "혼자 쭉 작업"할 때의 전용 상태/애니.
