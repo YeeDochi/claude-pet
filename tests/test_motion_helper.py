@@ -81,6 +81,29 @@ def test_send_keeps_live_port_file(tmp_path, monkeypatch):
     assert b"jump" in data
 
 
+class _TimeoutSock:
+    """Stand-in socket whose connect times out (a live-but-busy pet), to prove
+    send() does NOT delete the port file on anything but a refused connect."""
+    def settimeout(self, t): pass
+    def connect(self, addr): raise socket.timeout()
+    def sendall(self, b): pass
+    def close(self): pass
+
+
+def test_send_keeps_port_file_on_timeout(tmp_path, monkeypatch):
+    # a busy pet whose event loop is momentarily blocked -> connect times out.
+    # deleting its .port then would permanently sever a LIVE pet, so keep it.
+    slow = tmp_path / "claude-pet-slow.port"
+    slow.write_text("55555")
+    monkeypatch.setattr(mod, "port_files", lambda: [str(slow)])
+    monkeypatch.setattr(mod.socket, "socket", lambda *a, **k: _TimeoutSock())
+
+    n = mod.send(mod.build_motion_message("jump", 1.0))
+
+    assert n == 0
+    assert slow.exists()          # NOT removed (timeout != refused)
+
+
 def test_send_ignores_malformed_port_file(tmp_path, monkeypatch):
     # malformed content, not a refused connection -> not the dead-pet signal
     # this cleanup targets, so leave it alone rather than guessing.

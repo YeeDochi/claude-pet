@@ -1,9 +1,10 @@
-import sys, os, time
+import sys, os, time, socket, types
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt, QPoint
 import pet as P
+import hostinfo
 
 _app = QApplication.instance() or QApplication(sys.argv)
 
@@ -21,6 +22,41 @@ def test_pet_constructs_and_uses_engine():
     p._tick()
     assert p.claude_state == "work_computer"
     p._cleanup()
+
+
+def test_pet_answers_liveness_ping():
+    # the pet must reply to {"cmd":"ping"} with its banner so hostinfo.pet_alive
+    # can tell a real pet apart from an unrelated process on a reused stale port.
+    p = P.Pet(session_id="ping1")
+    try:
+        port = p.srv.getsockname()[1]
+        c = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        c.settimeout(1.0)
+        c.connect((hostinfo.LOOPBACK, port))
+        c.sendall(hostinfo.PING)
+        c.shutdown(socket.SHUT_WR)
+        p._on_conn()                      # simulate the QSocketNotifier firing
+        reply = c.recv(256).decode()
+        c.close()
+        assert hostinfo.BANNER_MARK in reply
+        assert p._quit_timer is None      # a ping is NOT a Claude event
+    finally:
+        p._cleanup()
+
+
+def test_pid_alive_posix_and_windows(monkeypatch):
+    if os.name != "nt":
+        assert P._pid_alive(os.getpid()) is True     # this test process is alive
+    # Windows branch: liveness comes from a process snapshot, never os.kill
+    # (which on Windows would Ctrl+C the target instead of probing it).
+    monkeypatch.setattr(P.os, "name", "nt")
+    fake = types.ModuleType("windows_win32")
+    fake.proc_table = lambda: {4321: ("claude.exe", 1)}
+    monkeypatch.setitem(sys.modules, "windows_win32", fake)
+    assert P._pid_alive(4321) is True
+    assert P._pid_alive(9999) is False               # absent from snapshot -> dead
+    fake.proc_table = lambda: {}                      # snapshot failed -> assume alive
+    assert P._pid_alive(9999) is True
 
 
 def test_pet_is_session_and_host_aware():

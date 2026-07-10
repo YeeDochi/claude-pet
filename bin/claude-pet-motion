@@ -18,7 +18,18 @@ import glob
 import socket
 import tempfile
 
-LOOPBACK = "127.0.0.1"
+# Share the transport definitions with the pet/hook (loopback address, runtime
+# dir, .port parse) instead of re-deriving them here — a second copy silently
+# drifts the moment the transport changes (which is exactly what the .sock->TCP
+# migration cost). Fall back to local constants only if src/ can't be imported.
+try:
+    _HERE = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, os.path.join(_HERE, "..", "src"))
+    import hostinfo
+except Exception:
+    hostinfo = None
+
+LOOPBACK = hostinfo.LOOPBACK if hostinfo else "127.0.0.1"
 
 # name -> default duration in seconds. 0.0 means "hold until cleared".
 MOTIONS = {
@@ -43,37 +54,54 @@ def build_motion_message(name, dur):
     return json.dumps({"cmd": "motion", "motion": name, "dur": dur}) + "\n"
 
 
+def _runtime_dir():
+    if hostinfo is not None:
+        return hostinfo.runtime_dir()
+    return os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
+
+
 def port_files():
-    base = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
-    return glob.glob(os.path.join(base, "claude-pet-*.port"))
+    return glob.glob(os.path.join(_runtime_dir(), "claude-pet-*.port"))
+
+
+def _read_port(path):
+    if hostinfo is not None:
+        return hostinfo.read_port_file(path)
+    try:
+        with open(path) as f:
+            return int(f.read().strip())
+    except (OSError, ValueError):
+        return None
 
 
 def send(msg):
     """Broadcast msg to every live pet; return how many accepted it.
 
-    A pet that died without cleanup (crash, force-kill) leaves its .port
-    file behind; a refused/failed connect is the signal that's stale, so
-    remove it here rather than letting these accumulate forever."""
+    Only a *refused* connect proves the pet is gone (nothing is listening on
+    that port) — that's when the leftover .port file is stale and we remove it.
+    A timeout or other error might just be a busy pet whose event loop is
+    momentarily blocked, so we must NOT delete the file then: doing so would
+    permanently sever a live pet, which only republishes its port at startup."""
     n = 0
     for path in port_files():
-        try:
-            with open(path) as f:
-                port = int(f.read().strip())
-        except (OSError, ValueError):
+        port = _read_port(path)
+        if port is None:
             continue
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(0.3)
         try:
             s.connect((LOOPBACK, port))
             s.sendall(msg.encode("utf-8"))
-            s.close()
             n += 1
-        except OSError:
-            s.close()
+        except ConnectionRefusedError:
             try:
                 os.unlink(path)
             except OSError:
                 pass
+        except OSError:
+            pass                    # busy/foreign -> leave the file for later
+        finally:
+            s.close()
     return n
 
 

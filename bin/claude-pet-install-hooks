@@ -26,10 +26,17 @@ def _quote(path):
     return f'"{path}"'
 
 
-# Prefix with the current interpreter rather than relying on the shebang line:
-# cmd.exe (used to run hook commands on Windows) doesn't parse "#!" at all, so
-# an extensionless script can't be launched directly there.
-HOOK_CMD = f"{_quote(sys.executable)} {_quote(HOOK)}"
+# On Windows, prefix the current interpreter: cmd.exe (used to run hook commands
+# there) doesn't parse "#!" at all, so an extensionless script can't launch
+# directly. On POSIX the shebang works, so run the script by path and let it
+# resolve `python3` at run time — pinning sys.executable there instead would
+# hard-wire the *installing* interpreter, and every hook then dies with exit 127
+# if that was a virtualenv/pyenv Python later removed (breaking the never-fail
+# guarantee across every session until reinstall).
+if os.name == "nt":
+    HOOK_CMD = f"{_quote(sys.executable)} {_quote(HOOK)}"
+else:
+    HOOK_CMD = _quote(HOOK)
 
 TOOL_EVENTS = ["PreToolUse", "PostToolUse"]
 PLAIN_EVENTS = ["UserPromptSubmit", "Notification", "Stop", "StopFailure",

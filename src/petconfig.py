@@ -58,15 +58,13 @@ def _windows_locale():
     """User's UI locale (e.g. "ko-KR") via Win32 — Windows doesn't set the
     POSIX LANG/LC_* vars resolve_lang() otherwise reads, so without this,
     "auto" would default to English on every Windows machine regardless of
-    the system's actual language."""
+    the system's actual language. Delegates to windows_win32 (the one module
+    that owns the guarded, typed ctypes handles) rather than re-opening windll."""
     try:
-        import ctypes
-        buf = ctypes.create_unicode_buffer(85)   # LOCALE_NAME_MAX_LENGTH
-        if ctypes.windll.kernel32.GetUserDefaultLocaleName(buf, len(buf)):
-            return buf.value
+        import windows_win32
+        return windows_win32.user_locale()
     except Exception:
-        pass
-    return ""
+        return ""
 
 
 def resolve_lang(value):

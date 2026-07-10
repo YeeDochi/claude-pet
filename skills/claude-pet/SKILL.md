@@ -21,11 +21,15 @@ Look at the argument the user passed after `/claude-pet`:
 
 ### Trigger a motion
 
+Run the helper with the interpreter and a native path, so it works on Windows
+git-bash too (a bare `~/...` path or shebang launch doesn't):
 ```bash
-~/claude-pet/bin/claude-pet-motion <arg>
+PY=python3; "$PY" -c "" >/dev/null 2>&1 || PY=python
+MOTION=$("$PY" -c "import os;print(os.path.expanduser('~/claude-pet/bin/claude-pet-motion'))")
+"$PY" "$MOTION" <arg>
 ```
-e.g. `~/claude-pet/bin/claude-pet-motion jump`, `~/claude-pet/bin/claude-pet-motion float`
-(holds until `~/claude-pet/bin/claude-pet-motion stop`), `~/claude-pet/bin/claude-pet-motion list`.
+e.g. `"$PY" "$MOTION" jump`, `"$PY" "$MOTION" float` (holds until
+`"$PY" "$MOTION" stop`), `"$PY" "$MOTION" list`.
 The helper broadcasts to every running pet and prints how many reacted; if it
 says `-> 0 pet(s)`, no pet is running — offer to attach one with `/claude-pet`.
 
@@ -46,37 +50,36 @@ says `-> 0 pet(s)`, no pet is running — offer to attach one with `/claude-pet`
    SID="${CLAUDE_CODE_SESSION_ID:-$(ls -t ~/.claude/projects/*/*.jsonl 2>/dev/null | head -1 | xargs -n1 basename | sed 's/\.jsonl$//')}"
    ```
 
-2. **Detect the host app** (terminal/IDE) so click-to-focus targets the right window:
+2. **Detect the host app** (terminal/IDE) so click-to-focus targets the right
+   window. Build the `src` path with `os.path.expanduser` *inside* Python — do
+   NOT interpolate `$HOME` into the `-c` string: on Windows git-bash `$HOME` is a
+   `/c/Users/...` MSYS path that native `python.exe` can't import from (MSYS path
+   conversion doesn't reach inside quoted program text):
    ```bash
-   HOST=$("$PY" -c "import sys; sys.path.insert(0, '$HOME/claude-pet/src'); import hostinfo; print(hostinfo.detect_host())")
+   HOST=$("$PY" -c "import sys, os; sys.path.insert(0, os.path.expanduser('~/claude-pet/src')); import hostinfo; print(hostinfo.detect_host())")
    ```
 
 3. **Skip if one is already attached, else launch it bound to the session.**
    Pets listen on loopback TCP, not a unix socket (stock Windows Python has no
    `AF_UNIX`, so the whole project uses one TCP code path — see
-   `src/hostinfo.py`); check liveness the same way the hook does, via the
-   `.port` file it publishes:
+   `src/hostinfo.py`). Check liveness with `hostinfo.pet_alive`, the same
+   handshake the hook uses (a bare connect can't tell a real pet from an
+   unrelated process that reused a stale port), and launch via a native path
+   with `setsid` where available so the pet gets its own process group and
+   outlives this tool call (falling back to `nohup` on git-bash, which has no
+   `setsid`):
    ```bash
-   ALIVE=$("$PY" -c "
-import sys, socket
-sys.path.insert(0, '$HOME/claude-pet/src')
-import hostinfo
-port = hostinfo.read_session_port('$SID')
-ok = False
-if port is not None:
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.settimeout(0.3)
-    try:
-        s.connect((hostinfo.LOOPBACK, port)); ok = True
-    except OSError:
-        pass
-print('yes' if ok else 'no')
-")
+   ALIVE=$("$PY" -c "import sys, os; sys.path.insert(0, os.path.expanduser('~/claude-pet/src')); import hostinfo; print('yes' if hostinfo.pet_alive('$SID') else 'no')")
+   LAUNCH=$("$PY" -c "import os; print(os.path.expanduser('~/claude-pet/bin/claude-pet'))")
    if [ "$ALIVE" = "yes" ]; then
        echo "already attached to this session 🐾"
    else
-       nohup "$PY" ~/claude-pet/bin/claude-pet --session "$SID" --host "$HOST" >/dev/null 2>&1 < /dev/null &
-       disown
+       if command -v setsid >/dev/null 2>&1; then
+           setsid "$PY" "$LAUNCH" --session "$SID" --host "$HOST" >/dev/null 2>&1 < /dev/null &
+       else
+           nohup "$PY" "$LAUNCH" --session "$SID" --host "$HOST" >/dev/null 2>&1 < /dev/null &
+       fi
+       disown 2>/dev/null || true
        echo "attached to session $SID (host=$HOST) 🐾"
    fi
    ```
@@ -94,8 +97,13 @@ If the user said "standalone" (or just wants a decorative pet that reacts to no
 particular session):
 ```bash
 PY=python3; "$PY" -c "" >/dev/null 2>&1 || PY=python
-nohup "$PY" ~/claude-pet/bin/claude-pet >/dev/null 2>&1 < /dev/null &
-disown
+LAUNCH=$("$PY" -c "import os; print(os.path.expanduser('~/claude-pet/bin/claude-pet'))")
+if command -v setsid >/dev/null 2>&1; then
+    setsid "$PY" "$LAUNCH" >/dev/null 2>&1 < /dev/null &
+else
+    nohup "$PY" "$LAUNCH" >/dev/null 2>&1 < /dev/null &
+fi
+disown 2>/dev/null || true
 echo "standalone pet running 🐾"
 ```
 

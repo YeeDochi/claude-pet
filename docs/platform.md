@@ -28,6 +28,21 @@ disabled.
 - **Windows**: nothing extra — window integration uses only the stdlib `ctypes`
   bindings to `user32`/`dwmapi`/`kernel32` in `src/windows_win32.py`.
 
+## Known limits / open items
+
+- **Windows display scaling** — the Win32 geometry feed converts each window's
+  physical-pixel rect to Qt logical coordinates using its monitor's DPI
+  (`GetDpiForWindow`), so perch/occlusion line up at 125%/150% scaling on a
+  single monitor and on same-scale multi-monitor arranged from the origin.
+  **Mixed-DPI multi-monitor** (different scale per screen) still needs
+  real-hardware calibration of each screen's logical origin — expect perch
+  offsets across the seam until then.
+- **Multi-user hosts** — the pet's command channel is an *unauthenticated*
+  loopback TCP listener. On a shared machine another local user could connect
+  to `127.0.0.1:<port>` and drive/quit the pet (state and motion only — no file
+  or code access). Fine for a single-user desktop; a token handshake is the
+  planned fix if this matters for your setup.
+
 ## Help test on your OS
 
 macOS is best-effort and **unverified on real hardware** — reports welcome. If

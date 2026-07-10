@@ -19,9 +19,15 @@ import subprocess
 # Claude Code always sends the hook payload as UTF-8 JSON on stdin, but on
 # non-UTF-8-locale Windows (e.g. Korean cp949), Python's default stdin codec
 # follows the console codepage and mangles any multi-byte payload content.
-for _stream in (sys.stdin, sys.stdout, sys.stderr):
-    if hasattr(_stream, "reconfigure"):
-        _stream.reconfigure(encoding="utf-8", errors="replace")
+# Wrapped because this is module-top-level code (outside main()'s try): a
+# closed/detached stream makes reconfigure raise, and this hook must never
+# fail Claude — swallow it and carry on.
+try:
+    for _stream in (sys.stdin, sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
 try:
     _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -48,19 +54,6 @@ def build_message(argv, data):
 
 def sock_for(data):
     return hostinfo.read_session_port(data.get("session_id") or "default")
-
-
-def _pet_running(port):
-    if port is None:
-        return False
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.settimeout(0.2)
-    try:
-        s.connect((hostinfo.LOOPBACK, port))
-        s.close()
-        return True
-    except OSError:
-        return False
 
 
 def resolve_claude_pid(start_pid, proc_info, max_hops=32):
@@ -163,20 +156,27 @@ def main():
 
     event = (sys.argv[1] if len(sys.argv) > 1 else "") or data.get("hook_event_name", "")
     session_id = data.get("session_id") or "default"
-    port = hostinfo.read_session_port(session_id)
 
-    # on session start, bring up this session's pet if it isn't already there
+    # on session start, bring up this session's pet if one isn't already there
+    # (verified by handshake, so a stale port file can't suppress the launch)
+    launched = False
     if event == "SessionStart":
         try:
-            if not _pet_running(port):
+            if not hostinfo.pet_alive(session_id):
                 _launch_pet(session_id, hostinfo.detect_host())
+                launched = True
         except Exception:
             pass
 
-    try:
-        _send(port, build_message(sys.argv, data).encode())
-    except Exception:
-        pass  # pet not running / not ready — ignore silently
+    # Skip the send right after launching: the new pet isn't listening yet, and
+    # the port we'd send to is the OLD (stale) one — which could belong to an
+    # unrelated process now. The pet picks up from the next event.
+    if not launched:
+        try:
+            _send(hostinfo.read_session_port(session_id),
+                  build_message(sys.argv, data).encode())
+        except Exception:
+            pass  # pet not running / not ready — ignore silently
 
 
 if __name__ == "__main__":

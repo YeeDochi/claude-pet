@@ -14,9 +14,17 @@ unchanged: `id;class;x,y,w,h;pid|id;class;x,y,w,h;pid|...`, bottom-to-top.
 import ctypes
 from ctypes import wintypes
 
-user32 = ctypes.windll.user32 if hasattr(ctypes, "windll") else None
-dwmapi = ctypes.windll.dwmapi if hasattr(ctypes, "windll") else None
-kernel32 = ctypes.windll.kernel32 if hasattr(ctypes, "windll") else None
+# ONE guard for everything Windows-only in this module. ctypes.windll (and
+# ctypes.WINFUNCTYPE) exist only on Windows, so importing this file on
+# Linux/macOS must touch none of them — every Win32 binding below keys off this
+# single flag rather than repeating `hasattr(ctypes, "windll")` per symbol,
+# where one forgotten copy silently breaks the import on non-Windows (and the
+# whole test suite with it — the exact regression commit 0ee4ba0 had to fix).
+_HAS_WINDLL = hasattr(ctypes, "windll")
+
+user32 = ctypes.windll.user32 if _HAS_WINDLL else None
+dwmapi = ctypes.windll.dwmapi if _HAS_WINDLL else None
+kernel32 = ctypes.windll.kernel32 if _HAS_WINDLL else None
 
 GWL_EXSTYLE = -20
 WS_EX_TOOLWINDOW = 0x00000080
@@ -25,7 +33,7 @@ DWMWA_CLOAKED = 14
 SW_RESTORE = 9
 TH32CS_SNAPPROCESS = 0x00000002
 _WNDENUMPROC = (ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
-                if hasattr(ctypes, "windll") else None)   # WINFUNCTYPE is Windows-only
+                if _HAS_WINDLL else None)   # WINFUNCTYPE is Windows-only
 
 
 class _PROCESSENTRY32(ctypes.Structure):
@@ -77,6 +85,18 @@ if user32 is not None:
     user32.AttachThreadInput.argtypes = [wintypes.DWORD, wintypes.DWORD, wintypes.BOOL]
     user32.AttachThreadInput.restype = wintypes.BOOL
 
+# GetDpiForWindow is Win10 1607+; older Windows won't have the symbol. Probe it
+# once so _dpi_scale can degrade to 1.0 (== today's physical-pixel behaviour)
+# instead of raising on access.
+_HAS_GETDPI = False
+if user32 is not None:
+    try:
+        user32.GetDpiForWindow.argtypes = [wintypes.HWND]
+        user32.GetDpiForWindow.restype = wintypes.UINT
+        _HAS_GETDPI = True
+    except AttributeError:
+        _HAS_GETDPI = False
+
 if dwmapi is not None:
     dwmapi.DwmGetWindowAttribute.argtypes = [
         wintypes.HWND, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD]
@@ -99,6 +119,26 @@ if kernel32 is not None:
     kernel32.CloseHandle.restype = wintypes.BOOL
     kernel32.GetCurrentThreadId.argtypes = []
     kernel32.GetCurrentThreadId.restype = wintypes.DWORD
+    kernel32.GetUserDefaultLocaleName.argtypes = [wintypes.LPWSTR, ctypes.c_int]
+    kernel32.GetUserDefaultLocaleName.restype = ctypes.c_int
+
+LOCALE_NAME_MAX_LENGTH = 85
+
+
+def user_locale():
+    """User's UI locale name (e.g. "ko-KR"), or "" if unavailable. Windows
+    doesn't export the POSIX LANG/LC_* vars, so this is how "auto" language
+    detection reads the system language there. Kept here (the module that owns
+    the guarded, typed ctypes handles) rather than re-opening windll elsewhere."""
+    if kernel32 is None:
+        return ""
+    try:
+        buf = ctypes.create_unicode_buffer(LOCALE_NAME_MAX_LENGTH)
+        if kernel32.GetUserDefaultLocaleName(buf, len(buf)):
+            return buf.value
+    except Exception:
+        pass
+    return ""
 
 
 def _is_cloaked(hwnd):
@@ -134,6 +174,37 @@ def _visible_rect(hwnd):
     return None
 
 
+def _dpi_scale(hwnd):
+    """Display scale (1.0, 1.25, 1.5, ...) of the monitor `hwnd` is on. Returns
+    1.0 when GetDpiForWindow is unavailable (pre-1607 Windows) or fails — i.e.
+    the previous physical-pixel behaviour — so this never regresses old setups."""
+    if not _HAS_GETDPI:
+        return 1.0
+    try:
+        dpi = user32.GetDpiForWindow(hwnd)
+        return (dpi / 96.0) if dpi else 1.0
+    except Exception:
+        return 1.0
+
+
+def _to_logical(left, top, w, h, scale):
+    """Physical-pixel rect -> Qt logical (device-independent) rect (pure).
+
+    The pet positions itself in Qt6 logical coordinates (Qt is per-monitor DPI
+    aware by default), but GetWindowRect/DWM report physical pixels, so at any
+    display scale != 100% the two disagree by the scale factor and every
+    perch/contain/occlusion comparison lands off by that factor. Dividing by the
+    window's monitor scale brings the feed into the pet's coordinate space.
+
+    Exact for a single monitor and for same-scale multi-monitor arranged from
+    the origin; mixed-DPI multi-monitor still needs real-hardware calibration of
+    per-monitor logical origins (tracked in docs/platform.md)."""
+    if scale and scale != 1.0:
+        return (int(round(left / scale)), int(round(top / scale)),
+                int(round(w / scale)), int(round(h / scale)))
+    return (int(left), int(top), int(w), int(h))
+
+
 def _enum_windows(exclude_hwnd=None):
     """Visible, non-minimized top-level windows, topmost-first (raw Win32 order)."""
     out = []
@@ -160,11 +231,14 @@ def _enum_windows(exclude_hwnd=None):
         w, h = rect.right - rect.left, rect.bottom - rect.top
         if w <= 0 or h <= 0:
             return True
+        # convert physical -> Qt logical so the feed shares the pet's coordinate
+        # space at display scales other than 100% (see _to_logical).
+        lx, ly, lw, lh = _to_logical(rect.left, rect.top, w, h, _dpi_scale(hwnd))
         buf = ctypes.create_unicode_buffer(256)
         user32.GetClassNameW(hwnd, buf, 256)
         pid = wintypes.DWORD()
         user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-        out.append((hwnd, buf.value.lower(), rect.left, rect.top, w, h, pid.value))
+        out.append((hwnd, buf.value.lower(), lx, ly, lw, lh, pid.value))
         return True
 
     user32.EnumWindows(_WNDENUMPROC(_cb), 0)
@@ -223,7 +297,7 @@ def proc_ancestors(pid, max_hops=40):
         cur = int(pid)
     except (TypeError, ValueError):
         return acc
-    parent = {p: pp for p, _, pp in _proc_snapshot()}
+    parent = {p: pp for p, (_, pp) in proc_table().items()}   # one snapshot, shared
     if not parent:
         return acc
     while cur > 1 and cur not in acc and len(acc) < max_hops:
@@ -233,6 +307,23 @@ def proc_ancestors(pid, max_hops=40):
             break
         cur = nxt
     return acc
+
+
+def find_window_by_class(substrings):
+    """hwnd of the topmost visible window whose class contains any of
+    `substrings` (lowercased), or None. The Win32 counterpart of the Linux
+    focus path's resourceClass fallback: lets click-to-focus still aim at the
+    host terminal/IDE when we never pinned its window by pid (e.g. a pet
+    launched without --claude-pid)."""
+    if user32 is None or not substrings:
+        return None
+    subs = [s.lower() for s in substrings if s]
+    if not subs:
+        return None
+    for hwnd, cls, _x, _y, _w, _h, _pid in _enum_windows():
+        if any(sub in cls for sub in subs):
+            return hwnd
+    return None
 
 
 def activate_hwnd(hwnd):

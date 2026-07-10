@@ -12,8 +12,14 @@ from collections import namedtuple
 # None when the feed predates pid reporting). Defaults keep old 6-arg callers OK.
 Win = namedtuple("Win", "wid x y w h title pid", defaults=(None,))
 
-# KWin classes that are shell chrome / helpers, never perch targets
-EXCLUDE_CLASSES = {"plasmashell", "xwaylandvideobridge", "claude-pet", ""}
+# Shell chrome / helper window classes, never perch targets. Covers both the
+# KDE feed (plasmashell, xwaylandvideobridge) and the Win32 feed: "progman" and
+# "workerw" are the Windows desktop/wallpaper host windows — full-screen,
+# bottom-of-stack, and (Progman) titled "Program Manager", so they pass the
+# generic filters and would otherwise be treated as a perch/containment target
+# under the whole desktop (inverting "a pet on the wallpaper is always visible").
+EXCLUDE_CLASSES = {"plasmashell", "xwaylandvideobridge", "claude-pet", "",
+                   "progman", "workerw"}
 
 
 def parse_kwin_dump(text, min_size=40):

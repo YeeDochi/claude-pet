@@ -242,6 +242,8 @@ class Pet(QWidget):
             conn, _ = self.srv.accept()
         except (BlockingIOError, OSError):
             return
+        events = []
+        ping = False
         with conn:
             conn.settimeout(0.2)
             buf = b""
@@ -253,13 +255,29 @@ class Pet(QWidget):
                     buf += chunk
             except (socket.timeout, OSError):
                 pass
-        for line in buf.decode("utf-8", "replace").splitlines():
-            line = line.strip()
-            if line:
+            for line in buf.decode("utf-8", "replace").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
                 try:
-                    self._handle_event(json.loads(line))
+                    ev = json.loads(line)
                 except json.JSONDecodeError:
+                    continue
+                if ev.get("cmd") == "ping":
+                    ping = True            # liveness probe, not a Claude event
+                else:
+                    events.append(ev)
+            if ping:
+                # answer with our banner so the prober can tell a real pet from
+                # an unrelated process that inherited a stale port number.
+                try:
+                    conn.sendall((json.dumps(
+                        {"pet": hostinfo.BANNER_MARK, "session": self.session_id}
+                    ) + "\n").encode())
+                except OSError:
                     pass
+        for ev in events:
+            self._handle_event(ev)
 
     def _handle_event(self, ev):
         # A motion command is a user override, NOT a Claude event: it must not
@@ -1141,9 +1159,16 @@ class Pet(QWidget):
         feed already tracks, so with multiple consoles the click focuses the
         right one."""
         geom = getattr(self, "_win32_geom", None)
-        if geom is None or not self._host_wid:
+        if geom is None:
             return
-        geom.activate_hwnd(self._host_wid)
+        target = self._host_wid
+        if not target:
+            # No pid-pinned host window (e.g. launched without --claude-pid):
+            # fall back to the first window of the host class, mirroring the
+            # Linux path — better than silently doing nothing.
+            target = geom.find_window_by_class(self.host_classes or ["konsole"])
+        if target:
+            geom.activate_hwnd(target)
 
     def _activate_claude_macos(self):
         """Bring the host terminal/IDE app to the front via AppleScript.
@@ -1220,6 +1245,30 @@ class Pet(QWidget):
             pass
 
 
+def _pid_alive(pid):
+    """Is process `pid` still running? Cross-OS; used by the orphan reaper.
+
+    NOT os.kill(pid, 0) on Windows: there signal 0 == CTRL_C_EVENT, so CPython
+    routes it to GenerateConsoleCtrlEvent and it would fire Ctrl+C at the target
+    instead of probing it. Use a process snapshot on Windows and the real
+    signal-0 probe only on POSIX (Linux/macOS). Unknown -> assume alive, so the
+    reaper never kills the pet on a merely-undetectable parent."""
+    if os.name == "nt":
+        try:
+            import windows_win32
+            table = windows_win32.proc_table()
+            return (not table) or (pid in table)
+        except Exception:
+            return True
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True                       # EPERM etc. -> alive but not ours
+
+
 def _lock_exclusive_nonblocking(fd):
     """Cross-platform advisory lock: fcntl.flock on POSIX, msvcrt on Windows."""
     if os.name == "posix":
@@ -1272,12 +1321,8 @@ def main():
     _reaper = None
     if args.claude_pid > 0:
         def _check_parent():
-            try:
-                os.kill(args.claude_pid, 0)
-            except ProcessLookupError:
+            if not _pid_alive(args.claude_pid):
                 app.quit()
-            except OSError:
-                pass                          # EPERM etc. -> assume still alive
         _reaper = QTimer()
         _reaper.timeout.connect(_check_parent)
         _reaper.start(3000)
