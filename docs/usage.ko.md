@@ -5,18 +5,19 @@
 ## 동작 원리
 
 ```
-Claude Code ──훅──▶ claude-pet-hook ──유닉스 소켓──▶ 펫 (PyQt6 창)
+Claude Code ──훅──▶ claude-pet-hook ──루프백 TCP──▶ 펫 (PyQt6 창)
 ```
 
 - **`src/pet.py`** — 펫: 테두리 없고 반투명한 항상-위 창. Linux에선 네이티브 Wayland가
   클라이언트의 자기 창 위치 지정을 막아서 XWayland(`QT_QPA_PLATFORM=xcb`)로 실행하고,
   macOS/Windows에선 네이티브 Qt 플랫폼을 써요.
 - **`src/creature.py`** — 크리처 렌더러 (순수 `QPainter`, 상태 기반).
-- **`bin/claude-pet-hook`** — Claude Code 훅 이벤트를 세션별 유닉스 소켓
-  (`$XDG_RUNTIME_DIR/claude-pet-<세션>.sock`)으로 펫에 전달하고, `SessionStart` 때 펫을
-  띄워요. Claude를 절대 막지 않아요.
+- **`bin/claude-pet-hook`** — Claude Code 훅 이벤트를 세션별 루프백 TCP 소켓
+  (포트는 `$XDG_RUNTIME_DIR/claude-pet-<세션>.port`에 기록 — 기본 Windows Python
+  빌드엔 유닉스 도메인 소켓이 없어서, 코드 경로를 하나로 유지하려고 전부 TCP를 써요)으로
+  펫에 전달하고, `SessionStart` 때 펫을 띄워요. Claude를 절대 막지 않아요.
 
-`bin/*` 도구는 전부 Python이라 `python3` 되는 곳이면 어디서든 실행돼요.
+`bin/*` 도구는 전부 Python이라 Python 되는 곳이면 어디서든 실행돼요.
 
 ## 인터랙션
 

@@ -5,7 +5,7 @@
 ## How it works
 
 ```
-Claude Code ──hook──▶ claude-pet-hook ──unix socket──▶ pet (PyQt6 window)
+Claude Code ──hook──▶ claude-pet-hook ──loopback TCP──▶ pet (PyQt6 window)
 ```
 
 - **`src/pet.py`** — the pet: a frameless, translucent, always-on-top window. On
@@ -13,10 +13,12 @@ Claude Code ──hook──▶ claude-pet-hook ──unix socket──▶ pet (
   which native Wayland forbids; on macOS/Windows it uses the native Qt platform.
 - **`src/creature.py`** — the creature renderer (pure `QPainter`, state-driven).
 - **`bin/claude-pet-hook`** — forwards each Claude Code hook event to the pet over
-  a per-session unix socket (`$XDG_RUNTIME_DIR/claude-pet-<session>.sock`) and
+  a per-session loopback TCP socket (port published in
+  `$XDG_RUNTIME_DIR/claude-pet-<session>.port`; stock Windows Python builds have
+  no unix domain sockets, so TCP is used everywhere for one code path) and
   launches a pet on `SessionStart`. Never blocks Claude.
 
-All `bin/*` tools are Python, so they run wherever `python3` does.
+All `bin/*` tools are Python, so they run wherever Python does.
 
 ## Interaction
 
