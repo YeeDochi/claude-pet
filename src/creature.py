@@ -179,7 +179,8 @@ def draw_creature(p, ox, oy, u, state, frame, facing=1):
     # arm pose derived from state (arms live on the LEFT/RIGHT sides)
     arm = {"work_computer": "none", "attention": "up", "celebrate": "up",
            "held": "up", "falling": "up", "juggle": "up", "wave": "wave"}.get(state, "side")
-    arm_swing = _sin(frame, 12, 0.5) if state == "walk" else 0.0
+    arm_swing = (_sin(frame, 12, 0.5) if state == "walk" else
+                 _sin(frame, 16, 0.5) if state == "autopilot" else 0.0)
 
     # ---- geometry (art-pixel space), origin at ox,oy ----
     # body occupies cols 3..18, rows 5..12 ; legs rows 12..15 ; crown rows 3..5
