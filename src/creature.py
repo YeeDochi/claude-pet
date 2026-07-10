@@ -529,18 +529,20 @@ if __name__ == "__main__":
     from PyQt6.QtCore import Qt, QRectF
     app = QGuiApplication(sys.argv)
 
-    labels = {"idle": "대기", "walk": "걷기", "work_computer": "코딩 중(노트북)",
-              "work_search": "검색 중(돋보기)", "work_web": "웹/전화",
-              "work_agent": "에이전트(분신)", "work_skill": "스킬(모자)",
-              "autopilot": "자동진행(순항)",
-              "auto_computer": "auto·코딩(파란창)", "auto_search": "auto·검색",
-              "auto_web": "auto·웹", "auto_agent": "auto·에이전트",
-              "auto_skill": "auto·스킬(붉은안광)",
-              "thinking": "생각 중(음...)", "attention": "봐줘!(입력대기)",
-              "asking": "답 기다림(질문/plan)",
-              "celebrate": "완료/신남", "error": "에러", "sleeping": "쿨쿨(수면)",
-              "jump": "점프", "wave": "손 흔들기", "sing": "노래", "juggle": "저글링",
-              "float": "둥실둥실"}
+    # caption = what triggers this animation (no parenthetical prop notes)
+    labels = {"idle": "대기", "walk": "배회",
+              "work_computer": "편집·실행", "work_search": "읽기·검색",
+              "work_web": "웹·MCP", "work_agent": "서브에이전트",
+              "work_skill": "스킬 실행",
+              "autopilot": "자동 진행", "auto_computer": "자동 편집",
+              "auto_search": "자동 읽기·검색", "auto_web": "자동 웹",
+              "auto_agent": "자동 서브에이전트", "auto_skill": "자동 스킬",
+              "thinking": "프롬프트 받음", "attention": "권한 요청",
+              "asking": "질문·플랜 대기", "celebrate": "완료",
+              "error": "실패", "sleeping": "수면",
+              "jump": "모션 · 점프", "wave": "모션 · 손 흔들기",
+              "sing": "모션 · 노래", "juggle": "모션 · 저글링",
+              "float": "모션 · 둥둥"}
     order = ["idle", "walk", "work_computer", "work_search", "work_web",
              "work_agent", "work_skill", "autopilot",
              "auto_computer", "auto_search", "auto_web", "auto_agent", "auto_skill",
@@ -559,7 +561,7 @@ if __name__ == "__main__":
     p.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
     p.setPen(QPen(QColor("#ECA184"))); f = QFont("Sans", 15); f.setBold(True); p.setFont(f)
     p.drawText(QRectF(0, 14, W, 26), Qt.AlignmentFlag.AlignCenter,
-               "claude-pet — 오리지널 크리처 (전부 코드 렌더, CC0)")
+               "claude-pet — 오리지널 크리처 · 전부 코드 렌더 · CC0")
     from PyQt6.QtGui import QPainterPath
     for i, st in enumerate(order):
         c = i % cols; r = i // cols
@@ -570,7 +572,14 @@ if __name__ == "__main__":
         # draw creature roughly centered
         gx = x0 + (cellw - GRID_W * u) / 2
         gy = y0 + (cellh - GRID_H * u) / 2 - 6
-        frame = 100 if st == "work_computer" else (6 if st == "walk" else 3)
+        if st in SPEECH:            # freeze where the bubble is fully typed & held
+            frame = len(SPEECH[st]) * 7 + 5
+        elif st == "work_computer":
+            frame = 100
+        elif st == "walk":
+            frame = 6
+        else:
+            frame = 8
         draw_creature(p, gx, gy, u, st, frame)
         p.setPen(QPen(QColor("#D7D7DC"))); p.setFont(QFont("Sans", 12))
         p.drawText(QRectF(x0, y0 + cellh - 40, cellw, 24), Qt.AlignmentFlag.AlignCenter, labels[st])
