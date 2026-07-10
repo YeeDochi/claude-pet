@@ -43,4 +43,4 @@ or minimized.
 
 ## License
 
-Code: MIT. Original artwork (the creature): CC0.
+Code: **MIT** (see [LICENSE](LICENSE)). Creature artwork: **CC0** (see [NOTICE](NOTICE)).

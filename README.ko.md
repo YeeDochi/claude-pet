@@ -39,4 +39,4 @@ pip install PyQt6
 
 ## 라이선스
 
-코드: MIT. 오리지널 아트(크리처): CC0.
+코드: **MIT** ([LICENSE](LICENSE)). 크리처 아트: **CC0** ([NOTICE](NOTICE)).
