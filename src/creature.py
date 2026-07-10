@@ -294,21 +294,25 @@ def draw_creature(p, ox, oy, u, state, frame, facing=1):
         elif kind == "happy":
             px(col, er + 0.8, 0.6, 0.6, EYE); px(col + 0.55, er + 0.3, 0.6, 0.6, EYE); px(col + 1.1, er + 0.8, 0.6, 0.6, EYE)
     if eyes in ("shades", "shades_glint"):
-        # wraparound goggle: a lens band across the face whose sides cup DOWN
-        # (like real glasses hugging the cheeks), not just a stripe over the eyes.
-        px(3.7, er - 0.2, 12.6, 1.7, EYE)                    # main lens band (wide)
-        px(3.2, er - 0.2, 1.7, 2.6, EYE)                     # left cup (wraps down)
-        px(15.6, er - 0.2, 1.7, 2.6, EYE)                    # right cup (wraps down)
-        px(3.7, er - 0.2, 12.6, 0.4, QColor("#5A5A66"))      # top rim
-        # a bright highlight streak sweeps across the lens now and then
+        # a VR headset: silver/grey housing wrapping the whole face, with a dark
+        # glossy screen inset and a travelling highlight — not black sunglasses.
+        SIL = QColor("#C2C8D2"); SIL_HI = QColor("#E9EDF3")
+        SIL_D = QColor("#8A90A0"); GLASS = QColor("#1E2230")
+        px(3.4, er - 0.5, 13.2, 2.7, SIL)                    # silver housing
+        px(3.0, er - 0.5, 1.6, 3.1, SIL)                     # left wrap (down)
+        px(15.8, er - 0.5, 1.6, 3.1, SIL)                    # right wrap (down)
+        px(3.4, er - 0.5, 13.2, 0.5, SIL_HI)                 # top highlight rim
+        px(3.4, er + 1.6, 13.2, 0.6, SIL_D)                  # bottom shade
+        px(4.5, er + 0.0, 11.0, 1.5, GLASS)                  # dark screen inset
+        # a bright reflection sweeps across the screen now and then
         swp = frame % 96
         if swp < 12:
-            gx = 4.2 + swp * 1.05
-            px(gx, er - 0.15, 0.8, 1.6, QColor("#EAF2FF"))   # travelling shine
+            gx = 4.9 + swp * 0.9
+            px(gx, er + 0.05, 0.9, 1.4, QColor("#9FD3FF"))   # travelling shine
         else:
-            px(4.4, er + 0.1, 1.8, 0.5, QColor("#8E8E9C"))   # resting glint
+            px(5.0, er + 0.25, 1.7, 0.45, QColor("#3A4256"))  # faint resting glint
         if eyes == "shades_glint" and (frame % 24) < 12:
-            px(12.4, er + 0.2, 1.4, 0.9, QColor("#FF3B3B"))  # red scouter glow (skill)
+            px(12.6, er + 0.35, 1.1, 0.8, QColor("#FF3B3B"))  # red status LED (skill)
     else:
         eye(e1, eyes); eye(e2, eyes)
 
