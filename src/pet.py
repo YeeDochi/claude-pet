@@ -34,6 +34,7 @@ import creature as C
 from state_engine import StateEngine
 import focus
 import hostinfo
+import petconfig
 import physics
 import windows
 
@@ -123,7 +124,11 @@ class Pet(QWidget):
 
         self.frame = 0
         self.facing = 1
-        self.engine = StateEngine(is_focused=self._is_focused)
+        cfg = petconfig.load_config()
+        self.engine = StateEngine(is_focused=self._is_focused,
+                                  tool_states=cfg["tool_states"],
+                                  event_states=cfg["event_states"],
+                                  raw_events=cfg["raw_events"])
         self.claude_state = "sleeping"       # last state the engine reported
         self.dnd = False                     # do-not-disturb
         self._quit_timer = None              # pending SessionEnd -> quit timer
