@@ -3,6 +3,34 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from state_engine import tool_to_state, StateEngine
 
 
+def test_tool_states_override():
+    e = StateEngine(tool_states={"Bash": "work_search", "Grep": "sing", "*": "thinking"})
+    e.handle({"event": "PreToolUse", "session": "a", "tool_name": "Bash"}, 0.0)
+    assert e.display_state(0.0) == "work_search"           # remapped tool
+    e2 = StateEngine(tool_states={"Grep": "sing"})
+    e2.handle({"event": "PreToolUse", "session": "a", "tool_name": "Grep"}, 0.0)
+    assert e2.display_state(0.0) == "sing"                 # mapped to a fun motion
+    e3 = StateEngine(tool_states={"*": "thinking"})
+    e3.handle({"event": "PreToolUse", "session": "a", "tool_name": "Unheard"}, 0.0)
+    assert e3.display_state(0.0) == "thinking"             # "*" fallback
+
+
+def test_event_states_override():
+    e = StateEngine(event_states={"prompt": "juggle"})
+    e.handle({"event": "UserPromptSubmit", "session": "a"}, 0.0)
+    assert e.display_state(0.0) == "juggle"
+
+
+def test_custom_target_gets_work_priority_and_decays():
+    # a custom tool state must win over idle (priority) and still time out so it
+    # doesn't stick forever with no further events
+    e = StateEngine(tool_states={"Grep": "sing"})
+    e.handle({"event": "PreToolUse", "session": "a", "tool_name": "Grep"}, 0.0)
+    assert e.display_state(1.0) == "sing"
+    # WORK_TIMEOUT decay (then straight to sleeping, since it's also past SLEEP)
+    assert e.display_state(1000.0) in ("idle", "sleeping")
+
+
 def test_tool_to_state_known_and_fallback():
     assert tool_to_state("Edit") == "work_computer"
     assert tool_to_state("Bash") == "work_computer"

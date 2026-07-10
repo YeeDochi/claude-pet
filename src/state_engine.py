@@ -16,6 +16,27 @@ TOOL_STATES = {
 WORK_STATES = {"work_computer", "work_search", "work_web",
                "work_agent", "work_skill"}
 
+# the direct single-state events, keyed by short name -> default state. Users can
+# override any of these via config (see petconfig.py).
+DEFAULT_EVENT_STATES = {
+    "start": "idle",            # SessionStart
+    "prompt": "thinking",       # UserPromptSubmit
+    "done": "idle",             # Stop, terminal focused
+    "celebrate": "celebrate",   # Stop, terminal NOT focused (away)
+    "error": "error",           # StopFailure
+    "permission": "attention",  # Notification / permission_prompt
+    "idle_prompt": "sleeping",  # Notification / idle_prompt
+}
+
+# states a user is allowed to map a tool/event to (expressive display states;
+# excludes internal/mode-only ones like walk/held/falling/float). Kept as a plain
+# set so this module stays Qt-free — mirror of the renderable creature states.
+MAPPABLE_STATES = {
+    "idle", "sleeping", "thinking", "attention", "error", "celebrate",
+    "work_computer", "work_search", "work_web", "work_agent", "work_skill",
+    "jump", "wave", "sing", "juggle",
+}
+
 PRIORITY = {
     "attention": 6, "error": 5,
     "work_computer": 4, "work_search": 4, "work_web": 4,
@@ -57,9 +78,27 @@ class _Session:
 
 
 class StateEngine:
-    def __init__(self, is_focused=None):
+    def __init__(self, is_focused=None, tool_states=None, event_states=None):
         self.sessions = {}
         self.is_focused = is_focused or (lambda: True)
+        # merge user overrides over the defaults (see petconfig.load_config)
+        self._tools = dict(TOOL_STATES)
+        self._tools.update(tool_states or {})
+        self._events = dict(DEFAULT_EVENT_STATES)
+        self._events.update(event_states or {})
+        # custom tool targets behave like work states (debounce + liveness decay)
+        self._work_like = set(WORK_STATES) | set(self._tools.values())
+        # custom target states show at work-level priority unless already ranked
+        self._priority = dict(PRIORITY)
+        for st in set(self._tools.values()) | set(self._events.values()):
+            self._priority.setdefault(st, 4)
+
+    def _tool_state(self, tool_name):
+        if tool_name in self._tools:
+            return self._tools[tool_name]
+        if tool_name and tool_name.startswith("mcp__"):
+            return "work_web"
+        return self._tools.get("*", "work_computer")   # "*" = generic fallback
 
     def handle(self, ev, now):
         name = ev.get("event") or ev.get("hook_event_name") or ""
@@ -73,32 +112,32 @@ class StateEngine:
         s.last_event = now
 
         if name == "SessionStart":
-            s.set_state("idle", now)
+            s.set_state(self._events["start"], now)
         elif name == "UserPromptSubmit":
-            s.set_state("thinking", now)
+            s.set_state(self._events["prompt"], now)
         elif name == "PreToolUse":
-            self._set_work(s, tool_to_state(ev.get("tool_name", "")), now)
+            self._set_work(s, self._tool_state(ev.get("tool_name", "")), now)
         elif name == "Notification":
             nt = ev.get("notification_type", "")
             if nt == "permission_prompt":
-                s.set_state("attention", now)
+                s.set_state(self._events["permission"], now)
             elif nt == "idle_prompt":
-                s.set_state("sleeping", now)
+                s.set_state(self._events["idle_prompt"], now)
         elif name == "Stop":
             if self.is_focused():
-                s.set_state("idle", now)
+                s.set_state(self._events["done"], now)
             else:
-                s.set_state("celebrate", now)
+                s.set_state(self._events["celebrate"], now)
                 s.expiry = now + CELEBRATE_DUR
         elif name == "StopFailure":
-            s.set_state("error", now)
+            s.set_state(self._events["error"], now)
             s.expiry = now + ERROR_DUR
         # PostToolUse / SubagentStop / unknown: liveness refresh only
 
     def _set_work(self, s, work_state, now):
         # Guarantee the current work motion shows >= DEBOUNCE before switching
         # to a *different* work motion; remember the latest as pending.
-        if s.state in WORK_STATES and (now - s.since) < DEBOUNCE:
+        if s.state in self._work_like and (now - s.since) < DEBOUNCE:
             if work_state != s.state:
                 s.pending = work_state
             return
@@ -106,14 +145,14 @@ class StateEngine:
 
     def _age(self, s, now):
         # promote a deferred work state once the current one has held long enough
-        if s.pending and s.state in WORK_STATES and (now - s.since) >= DEBOUNCE:
+        if s.pending and s.state in self._work_like and (now - s.since) >= DEBOUNCE:
             s.set_state(s.pending, now)
         # transient states (celebrate/error) decay back to calm idle
         if s.expiry is not None and now >= s.expiry:
             s.set_state("idle", now)
         # work/thinking gone quiet for a long time: no Stop ever came (e.g. the
         # user interrupted with ESC), so fall back to calm idle.
-        if (s.state in WORK_STATES or s.state == "thinking") and \
+        if (s.state in self._work_like or s.state == "thinking") and \
            (now - s.last_event) >= WORK_TIMEOUT:
             s.set_state("idle", now)
         # calm idle falls asleep after a long quiet spell
@@ -126,4 +165,4 @@ class StateEngine:
         if not self.sessions:
             return "sleeping"
         return max((s.state for s in self.sessions.values()),
-                   key=lambda st: PRIORITY.get(st, 0))
+                   key=lambda st: self._priority.get(st, 0))

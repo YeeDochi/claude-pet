@@ -66,9 +66,37 @@ Then type `/claude-pet` (or "펫 띄워") in any session to launch one. This onl
 
 ## Interaction
 
-- **Drag** to pick it up and throw it — it falls with gravity and bounces.
+- **Drag** to pick it up and throw it — it falls with gravity and bounces. Fling
+  it inside a window and it bounces off the interior walls; drag it out to leave.
 - **Left-click** — bring the Claude Code terminal (Konsole) to the front.
-- **Right-click** — menu: *come here* / *quiet (mute)* / *quit*.
+- **Right-click / tray** — menu: *커서 따라오기* (follow the cursor) / *모션* submenu
+  (jump / wave / sing / juggle / celebrate) / *둥둥 띄우기* (float, no-gravity toggle) /
+  *quiet (mute)* / *quit*.
+- **Motions from the CLI/skill** — `/claude-pet <motion>` (or
+  `bin/claude-pet-motion <motion>`): `jump`, `wave`, `sing`, `juggle`, `float`,
+  plus `celebrate`/`thinking`/`sleeping`/`error`/`attention`; `list`, `stop`.
+
+## Custom motion mapping
+
+Remap which motion shows for which Claude Code activity in a JSON config at
+`~/.config/claude-pet/config.json` (all keys optional):
+
+```json
+{
+  "tools":  { "Bash": "work_search", "Grep": "sing", "*": "work_computer" },
+  "events": { "prompt": "thinking", "celebrate": "juggle" }
+}
+```
+
+- `tools` — tool name → state. `"*"` is the fallback for unmapped tools;
+  `mcp__*` tools default to `work_web` unless named explicitly.
+- `events` — event slot → state. Slots: `start`, `prompt`, `done`, `celebrate`,
+  `error`, `permission`, `idle_prompt`.
+
+Values must be a known state/motion (`work_computer`, `work_search`, `work_web`,
+`work_agent`, `work_skill`, `idle`, `sleeping`, `thinking`, `attention`, `error`,
+`celebrate`, `jump`, `wave`, `sing`, `juggle`); anything unknown is ignored, so a
+typo falls back to the defaults. Restart the pet to pick up changes.
 
 ## Autostart
 
