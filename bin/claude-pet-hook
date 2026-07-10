@@ -53,13 +53,57 @@ def _pet_running(sock_path):
         return False
 
 
+def resolve_claude_pid(start_pid, proc_info, max_hops=32):
+    """Walk up the parent chain from start_pid to the Claude Code process.
+
+    Claude runs hooks under a transient shell, so os.getppid() is that
+    shell (which exits within ~1s) rather than the long-lived `claude`
+    process. If the pet's orphan reaper polled the shell pid it would quit
+    ~3s after launch. So climb parents until one whose command name
+    contains 'claude', and give the reaper *that* pid.
+
+    proc_info(pid) -> (comm, ppid) or None if the pid is gone. Returns 0
+    if no claude ancestor is found (caller then skips the reaper — the pet
+    simply won't self-reap, same as a manually launched one).
+    """
+    pid = start_pid
+    seen = set()
+    for _ in range(max_hops):
+        if pid <= 1 or pid in seen:
+            return 0
+        seen.add(pid)
+        info = proc_info(pid)
+        if info is None:
+            return 0
+        comm, ppid = info
+        if "claude" in comm:
+            return pid
+        pid = ppid
+    return 0
+
+
+def _proc_info(pid):
+    """(comm, ppid) for a pid from /proc, or None. Linux-only; other
+    platforms fall through to None so the reaper is simply skipped."""
+    try:
+        with open("/proc/%d/stat" % pid) as f:
+            data = f.read()
+        # format: `pid (comm) state ppid ...`; comm may contain spaces/parens
+        rparen = data.rindex(")")
+        comm = data[data.index("(") + 1:rparen]
+        fields = data[rparen + 2:].split()
+        return comm, int(fields[1])   # fields[0]=state, fields[1]=ppid
+    except (OSError, ValueError, IndexError):
+        return None
+
+
 def _launch_pet(session_id, host):
     launcher = os.path.join(_HERE, "claude-pet")
-    # os.getppid() here is the Claude Code process that invoked this hook; the
-    # pet polls it and winds down if it dies without a SessionEnd (e.g. SIGKILL).
+    # Give the reaper the real Claude Code pid, not our transient shell parent.
+    claude_pid = resolve_claude_pid(os.getppid(), _proc_info)
     subprocess.Popen(
         [launcher, "--session", session_id, "--host", host,
-         "--claude-pid", str(os.getppid())],
+         "--claude-pid", str(claude_pid)],
         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL, start_new_session=True)
 
