@@ -31,6 +31,10 @@ AUTO_VARIANT = {
 }
 AUTO_STATES = {"autopilot", *AUTO_VARIANT.values()}
 
+# of those, the ones that WANDER the screen while working — "looking things up"
+# reads as roaming; coding/agent/skill stay put and focus. (pet.py roam gating)
+AUTO_ROAM = {"auto_web", "auto_search"}
+
 WORK_STATES = {"work_computer", "work_search", "work_web",
                "work_agent", "work_skill"} | AUTO_STATES
 

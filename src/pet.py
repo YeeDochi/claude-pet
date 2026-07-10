@@ -31,7 +31,7 @@ from PyQt6.QtDBus import QDBusConnection
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import creature as C
-from state_engine import StateEngine, AUTO_STATES
+from state_engine import StateEngine, AUTO_ROAM
 import focus
 import hostinfo
 import petconfig
@@ -296,8 +296,9 @@ class Pet(QWidget):
         # (and wherever you drag it), but the pet keeps its normal animation.
         floating = self._floating and self.mode not in ("held", "thrown")
         following = self._follow and self.mode not in ("held", "thrown")
-        # auto/bypass work states wander too (visor on): they roam like idle does
-        roaming = (eff in ("idle", "sleeping") or eff in AUTO_STATES) \
+        # in auto mode the "looking things up" states wander (visor on); coding/
+        # agent/skill stay put and focus. idle/waiting roam as before.
+        roaming = (eff in ("idle", "sleeping") or eff in AUTO_ROAM) \
             and self.mode == "roam" and not self.dnd
 
         if self.mode == "held":
@@ -428,7 +429,7 @@ class Pet(QWidget):
     def _walk_render(self):
         """Render state while walking a roam leg: an auto_* variant walks with its
         visor + prop on; plain idle/waiting roaming shows the generic walk."""
-        return self.claude_state if self.claude_state in AUTO_STATES else "walk"
+        return self.claude_state if self.claude_state in AUTO_ROAM else "walk"
 
     def _on_cursor(self, xy):
         try:

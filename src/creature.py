@@ -22,8 +22,10 @@ from PyQt6.QtCore import QRectF
 # it works, each work type keeping its own prop. `autopilot` is the generic cruise.
 AUTO_VARIANTS = ("auto_computer", "auto_search", "auto_web",
                  "auto_agent", "auto_skill")
-# states that animate with a walking leg cycle (they roam or stroll)
-_WALKERS = ("walk", "autopilot") + AUTO_VARIANTS
+# states that animate with a walking leg cycle: plain walk, the generic autopilot
+# stroll, and the auto variants that actually roam (web/search). coding/agent/skill
+# variants stay put, so their legs don't do a walk cycle.
+_WALKERS = ("walk", "autopilot", "auto_web", "auto_search")
 
 STATES = ("idle", "walk", "work_computer", "work_search", "work_web",
           "work_agent", "work_skill", "autopilot") + AUTO_VARIANTS + (
@@ -200,8 +202,7 @@ def draw_creature(p, ox, oy, u, state, frame, facing=1):
     arm = {"work_computer": "none", "attention": "up", "celebrate": "up",
            "held": "up", "falling": "up", "juggle": "up", "wave": "wave"}.get(state, "side")
     arm_swing = (_sin(frame, 12, 0.5) if state == "walk" else
-                 _sin(frame, 16, 0.5) if state in ("autopilot",) + AUTO_VARIANTS
-                 else 0.0)
+                 _sin(frame, 16, 0.5) if state in _WALKERS else 0.0)
 
     # ---- geometry (art-pixel space), origin at ox,oy ----
     # body occupies cols 3..18, rows 5..12 ; legs rows 12..15 ; crown rows 3..5
@@ -293,12 +294,21 @@ def draw_creature(p, ox, oy, u, state, frame, facing=1):
         elif kind == "happy":
             px(col, er + 0.8, 0.6, 0.6, EYE); px(col + 0.55, er + 0.3, 0.6, 0.6, EYE); px(col + 1.1, er + 0.8, 0.6, 0.6, EYE)
     if eyes in ("shades", "shades_glint"):
-        # cool wraparound visor across the face (autopilot "I got this")
-        px(4.6, er - 0.2, 10.8, 1.7, EYE)                    # dark lens band
-        px(4.6, er - 0.2, 10.8, 0.45, QColor("#6A6A78"))     # top glint
-        px(5.2, er + 0.2, 2.0, 0.5, QColor("#9AA0AA"))       # corner shine
+        # wraparound goggle: a lens band across the face whose sides cup DOWN
+        # (like real glasses hugging the cheeks), not just a stripe over the eyes.
+        px(3.7, er - 0.2, 12.6, 1.7, EYE)                    # main lens band (wide)
+        px(3.2, er - 0.2, 1.7, 2.6, EYE)                     # left cup (wraps down)
+        px(15.6, er - 0.2, 1.7, 2.6, EYE)                    # right cup (wraps down)
+        px(3.7, er - 0.2, 12.6, 0.4, QColor("#5A5A66"))      # top rim
+        # a bright highlight streak sweeps across the lens now and then
+        swp = frame % 96
+        if swp < 12:
+            gx = 4.2 + swp * 1.05
+            px(gx, er - 0.15, 0.8, 1.6, QColor("#EAF2FF"))   # travelling shine
+        else:
+            px(4.4, er + 0.1, 1.8, 0.5, QColor("#8E8E9C"))   # resting glint
         if eyes == "shades_glint" and (frame % 24) < 12:
-            px(12.4, er + 0.25, 1.3, 0.8, QColor("#FF3B3B"))  # red glint (skill)
+            px(12.4, er + 0.2, 1.4, 0.9, QColor("#FF3B3B"))  # red scouter glow (skill)
     else:
         eye(e1, eyes); eye(e2, eyes)
 
