@@ -83,8 +83,9 @@ Remap which motion shows for which Claude Code activity in a JSON config at
 
 ```json
 {
-  "tools":  { "Bash": "work_search", "Grep": "sing", "*": "work_computer" },
-  "events": { "prompt": "thinking", "celebrate": "juggle" }
+  "tools":      { "Bash": "work_search", "Grep": "sing", "*": "work_computer" },
+  "events":     { "prompt": "thinking", "celebrate": "juggle" },
+  "raw_events": { "PostToolUse": "celebrate", "SubagentStop": "wave" }
 }
 ```
 
@@ -92,6 +93,9 @@ Remap which motion shows for which Claude Code activity in a JSON config at
   `mcp__*` tools default to `work_web` unless named explicitly.
 - `events` — event slot → state. Slots: `start`, `prompt`, `done`, `celebrate`,
   `error`, `permission`, `idle_prompt`.
+- `raw_events` — raw hook event name → state, for any event without a slot
+  (`PostToolUse`, `SubagentStop`, `PreCompact`, …). Knowing the event name the
+  hook sends is enough to map it; slotted events keep their built-in behaviour.
 
 Values must be a known state/motion (`work_computer`, `work_search`, `work_web`,
 `work_agent`, `work_skill`, `idle`, `sleeping`, `thinking`, `attention`, `error`,

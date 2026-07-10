@@ -127,7 +127,8 @@ class Pet(QWidget):
         cfg = petconfig.load_config()
         self.engine = StateEngine(is_focused=self._is_focused,
                                   tool_states=cfg["tool_states"],
-                                  event_states=cfg["event_states"])
+                                  event_states=cfg["event_states"],
+                                  raw_events=cfg["raw_events"])
         self.claude_state = "sleeping"       # last state the engine reported
         self.dnd = False                     # do-not-disturb
         self._quit_timer = None              # pending SessionEnd -> quit timer

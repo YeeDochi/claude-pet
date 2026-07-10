@@ -21,6 +21,21 @@ def test_event_states_override():
     assert e.display_state(0.0) == "juggle"
 
 
+def test_raw_event_mapping_for_unhandled_events():
+    # an event without a dedicated slot (PostToolUse) is mappable by raw name
+    e = StateEngine(raw_events={"PostToolUse": "wave"})
+    e.handle({"event": "PostToolUse", "session": "a", "tool_name": "Edit"}, 0.0)
+    assert e.display_state(0.0) == "wave"
+
+
+def test_raw_event_does_not_override_handled_slots():
+    # a handled event (UserPromptSubmit) keeps its slot behaviour even if also
+    # named in raw_events — the specific branch wins
+    e = StateEngine(raw_events={"UserPromptSubmit": "sing"})
+    e.handle({"event": "UserPromptSubmit", "session": "a"}, 0.0)
+    assert e.display_state(0.0) == "thinking"
+
+
 def test_custom_target_gets_work_priority_and_decays():
     # a custom tool state must win over idle (priority) and still time out so it
     # doesn't stick forever with no further events

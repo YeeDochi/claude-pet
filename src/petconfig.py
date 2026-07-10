@@ -5,14 +5,18 @@ File (JSON, all keys optional), at ``$XDG_CONFIG_HOME/claude-pet/config.json``
 (default ``~/.config/claude-pet/config.json``)::
 
     {
-      "tools":  { "Bash": "work_search", "Grep": "sing", "*": "work_computer" },
-      "events": { "prompt": "jam", "celebrate": "juggle" }
+      "tools":      { "Bash": "work_search", "Grep": "sing", "*": "work_computer" },
+      "events":     { "prompt": "thinking", "celebrate": "juggle" },
+      "raw_events": { "PostToolUse": "celebrate", "SubagentStop": "wave" }
     }
 
 - ``tools``  — tool name -> state. ``"*"`` is the fallback for unmapped tools;
   ``mcp__*`` tools default to ``work_web`` unless named explicitly.
 - ``events`` — event slot -> state. Slots: start, prompt, done, celebrate,
   error, permission, idle_prompt (see state_engine.DEFAULT_EVENT_STATES).
+- ``raw_events`` — raw hook event name -> state, for any event the engine does
+  not already handle via a slot (PostToolUse, SubagentStop, PreCompact, and any
+  future event). Knowing the event name the hook pushes is enough to map it.
 
 Values must be one of state_engine.MAPPABLE_STATES; anything else (or a bad
 file) is ignored, so a typo degrades to the built-in defaults rather than
@@ -39,7 +43,11 @@ def _clean(raw):
     for key, val in (raw.get("events") or {}).items():
         if key in DEFAULT_EVENT_STATES and val in MAPPABLE_STATES:
             events[key] = val
-    return {"tool_states": tools, "event_states": events}
+    raw_events = {}
+    for key, val in (raw.get("raw_events") or {}).items():
+        if isinstance(key, str) and val in MAPPABLE_STATES:
+            raw_events[key] = val
+    return {"tool_states": tools, "event_states": events, "raw_events": raw_events}
 
 
 def load_config(path=None):
@@ -50,7 +58,7 @@ def load_config(path=None):
         with open(path, encoding="utf-8") as f:
             raw = json.load(f)
     except (OSError, ValueError):
-        return {"tool_states": {}, "event_states": {}}
+        return {"tool_states": {}, "event_states": {}, "raw_events": {}}
     if not isinstance(raw, dict):
-        return {"tool_states": {}, "event_states": {}}
+        return {"tool_states": {}, "event_states": {}, "raw_events": {}}
     return _clean(raw)

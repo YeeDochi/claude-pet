@@ -78,7 +78,8 @@ class _Session:
 
 
 class StateEngine:
-    def __init__(self, is_focused=None, tool_states=None, event_states=None):
+    def __init__(self, is_focused=None, tool_states=None, event_states=None,
+                 raw_events=None):
         self.sessions = {}
         self.is_focused = is_focused or (lambda: True)
         # merge user overrides over the defaults (see petconfig.load_config)
@@ -86,11 +87,16 @@ class StateEngine:
         self._tools.update(tool_states or {})
         self._events = dict(DEFAULT_EVENT_STATES)
         self._events.update(event_states or {})
-        # custom tool targets behave like work states (debounce + liveness decay)
-        self._work_like = set(WORK_STATES) | set(self._tools.values())
+        # raw hook-event-name -> state, for events without a dedicated slot
+        # (PostToolUse, SubagentStop, PreCompact, future events...)
+        self._raw = dict(raw_events or {})
+        # custom targets behave like work states (debounce + liveness decay)
+        self._work_like = (set(WORK_STATES) | set(self._tools.values())
+                           | set(self._raw.values()))
         # custom target states show at work-level priority unless already ranked
         self._priority = dict(PRIORITY)
-        for st in set(self._tools.values()) | set(self._events.values()):
+        for st in (set(self._tools.values()) | set(self._events.values())
+                   | set(self._raw.values())):
             self._priority.setdefault(st, 4)
 
     def _tool_state(self, tool_name):
@@ -132,7 +138,10 @@ class StateEngine:
         elif name == "StopFailure":
             s.set_state(self._events["error"], now)
             s.expiry = now + ERROR_DUR
-        # PostToolUse / SubagentStop / unknown: liveness refresh only
+        elif name in self._raw:
+            # any other event the user mapped by raw name (PostToolUse, etc.)
+            s.set_state(self._raw[name], now)
+        # otherwise (PostToolUse/SubagentStop/… unmapped): liveness refresh only
 
     def _set_work(self, s, work_state, now):
         # Guarantee the current work motion shows >= DEBOUNCE before switching
