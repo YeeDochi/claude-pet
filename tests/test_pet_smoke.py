@@ -67,3 +67,37 @@ def test_roam_falls_when_surface_dropped_away():
         assert p.mode == "thrown"  # falls instead of teleporting
     finally:
         p._cleanup()
+
+
+def test_motion_command_overrides_render_state():
+    p = P.Pet(session_id="m1")
+    try:
+        p._handle_event({"cmd": "motion", "motion": "jump", "dur": 2.0})
+        assert p._motion == "jump"
+        p.mode = "roam"
+        p._tick()
+        assert p._render_state == "jump"
+    finally:
+        p._cleanup()
+
+
+def test_motion_command_does_not_cancel_quit_timer():
+    p = P.Pet(session_id="m2")
+    try:
+        p._handle_event({"event": "SessionEnd", "session": "m2"})
+        assert p._quit_timer is not None
+        p._handle_event({"cmd": "motion", "motion": "wave", "dur": 1.0})
+        assert p._quit_timer is not None      # a motion cmd is NOT a Claude event
+    finally:
+        p._cleanup()
+
+
+def test_motion_clear_releases_override():
+    p = P.Pet(session_id="m3")
+    try:
+        p._handle_event({"cmd": "motion", "motion": "float", "dur": 0})
+        assert p._motion == "float"
+        p._handle_event({"cmd": "motion", "motion": None, "dur": 0})
+        assert p._motion is None
+    finally:
+        p._cleanup()

@@ -123,6 +123,10 @@ class Pet(QWidget):
         self.walk_pause = 0.0
         self.vx = self.vy = 0.0
 
+        # user-triggered motion override (timed; independent of StateEngine)
+        self._motion = None
+        self._motion_expiry = None       # monotonic deadline; None = hold
+
         # drag tracking
         self._press_global = None
         self._press_winpos = None
@@ -180,6 +184,20 @@ class Pet(QWidget):
                     pass
 
     def _handle_event(self, ev):
+        # A motion command is a user override, NOT a Claude event: it must not
+        # touch the engine or the SessionEnd quit timer.
+        if ev.get("cmd") == "motion":
+            motion = ev.get("motion")
+            if not motion:
+                if self._motion == "float":
+                    self.mode = "thrown"        # gravity brings the floater home
+                self._motion = None
+                self._motion_expiry = None
+            else:
+                dur = ev.get("dur", 0) or 0
+                self._motion = motion
+                self._motion_expiry = (time.monotonic() + dur) if dur > 0 else None
+            return
         self.engine.handle(ev, time.monotonic())
         name = ev.get("event") or ev.get("hook_event_name") or ""
         if name == "SessionEnd":
@@ -210,6 +228,18 @@ class Pet(QWidget):
         self.claude_state = self.engine.display_state(now)
         eff = self.claude_state
         self._update_tray_icon()
+
+        # user-triggered motion override wins over roam/idle, but never over
+        # drag/throw physics (held/thrown paint their own thing).
+        if self._motion and self.mode not in ("held", "thrown"):
+            if self._motion_expiry is not None and now >= self._motion_expiry:
+                self._motion = None
+                self._motion_expiry = None
+            else:
+                if self._motion == "float":
+                    self.y = float(self.screen_rect.top() + self.h)  # hover high
+                self._render_state = self._motion
+                return
 
         roaming = eff in ("idle", "sleeping") and self.mode == "roam" and not self.dnd
 
