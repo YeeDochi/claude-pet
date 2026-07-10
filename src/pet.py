@@ -509,15 +509,20 @@ class Pet(QWidget):
         """Feed self._wins with other windows' geometry so the pet can perch on
         and be contained by them. KDE: register a D-Bus service and start a
         persistent KWin script that pushes on change. Windows: no equivalent
-        push API, so poll Win32's window list on a timer instead. Either way,
-        any failure -> feature just off (self._wins stays empty, pre-perch
-        behaviour). self._geom_active is the generic (backend-agnostic) flag;
-        self._dbus_name stays KDE-specific, used only by the KDE code paths."""
+        push API, so poll Win32's window list on a timer instead. macOS: same
+        polled shape via Quartz (SPECULATIVE, unverified on real hardware —
+        see macos_geom.py). Either way, any failure -> feature just off
+        (self._wins stays empty, pre-perch behaviour). self._geom_active is
+        the generic (backend-agnostic) flag; self._dbus_name stays
+        KDE-specific, used only by the KDE code paths."""
         self._geom_active = False
         if os.name == "nt":
             self._setup_geom_feed_win32()
             return
-        if QDBusConnection is None:          # no QtDBus (some macOS Qt builds)
+        if sys.platform == "darwin":
+            self._setup_geom_feed_macos()
+            return
+        if QDBusConnection is None:          # no QtDBus on some Qt builds
             self._dbus_name = None
             return
         try:
@@ -550,6 +555,38 @@ class Pet(QWidget):
     def _poll_win32_geom(self):
         try:
             dump = self._win32_geom.dump(exclude_hwnd=int(self.winId()))
+        except Exception:
+            return
+        self._on_geom(dump)
+
+    def _setup_geom_feed_macos(self):
+        """macOS perch/occlusion feed via Quartz window services, polled like
+        the Win32 one (no usable push-on-change API there either).
+
+        SPECULATIVE — written without macOS hardware, never executed on a Mac;
+        see macos_geom.py's module docstring for the assumptions to verify
+        (Screen Recording permission, coordinate space, z-order)."""
+        try:
+            import macos_geom
+        except Exception:
+            return
+        if not macos_geom.available():       # not macOS, or pyobjc missing
+            return
+        self._macos_geom = macos_geom
+        self._macos_timer = QTimer(self)
+        self._macos_timer.timeout.connect(self._poll_macos_geom)
+        # 220ms copied from the Win32 branch — an arbitrary guess here, pending
+        # real profiling on a Mac (CGWindowListCopyWindowInfo is documented as
+        # "relatively expensive"; bump this up if it burns CPU).
+        self._macos_timer.start(220)
+        self._geom_active = True
+        self._poll_macos_geom()
+
+    def _poll_macos_geom(self):
+        # exclude by pid, not window id: Qt's winId() on macOS is an NSView
+        # pointer, not a CGWindowID — see macos_geom.py's docstring.
+        try:
+            dump = self._macos_geom.dump(exclude_pid=os.getpid())
         except Exception:
             return
         self._on_geom(dump)
@@ -1152,6 +1189,10 @@ class Pet(QWidget):
         app = hostinfo.mac_app(self.host)
         if not app or not shutil.which("osascript"):
             return
+        # hostinfo.MAC_APP values are a fixed, quote-free dict today, but this
+        # is spliced into AppleScript source — escape defensively so a future
+        # entry containing `"` or `\` can't break/inject the script.
+        app = app.replace("\\", "\\\\").replace('"', '\\"')
         try:
             subprocess.run(
                 ["osascript", "-e", 'tell application "%s" to activate' % app],
