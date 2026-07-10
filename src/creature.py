@@ -298,21 +298,22 @@ def draw_creature(p, ox, oy, u, state, frame, facing=1):
         # glossy screen inset and a travelling highlight — not black sunglasses.
         SIL = QColor("#C2C8D2"); SIL_HI = QColor("#E9EDF3")
         SIL_D = QColor("#8A90A0"); GLASS = QColor("#1E2230")
-        px(3.4, er - 0.5, 13.2, 2.7, SIL)                    # silver housing
-        px(3.0, er - 0.5, 1.6, 3.1, SIL)                     # left wrap (down)
-        px(15.8, er - 0.5, 1.6, 3.1, SIL)                    # right wrap (down)
-        px(3.4, er - 0.5, 13.2, 0.5, SIL_HI)                 # top highlight rim
-        px(3.4, er + 1.6, 13.2, 0.6, SIL_D)                  # bottom shade
-        px(4.5, er + 0.0, 11.0, 1.5, GLASS)                  # dark screen inset
+        # centred on the body midline (col 10.5): housing 3.9..17.1
+        px(3.9, er - 0.5, 13.2, 2.7, SIL)                    # silver housing
+        px(3.5, er - 0.5, 1.6, 3.1, SIL)                     # left wrap (down)
+        px(15.9, er - 0.5, 1.6, 3.1, SIL)                    # right wrap (down)
+        px(3.9, er - 0.5, 13.2, 0.5, SIL_HI)                 # top highlight rim
+        px(3.9, er + 1.6, 13.2, 0.6, SIL_D)                  # bottom shade
+        px(5.0, er + 0.0, 11.0, 1.5, GLASS)                  # dark screen inset
         # a bright reflection sweeps across the screen now and then
         swp = frame % 96
         if swp < 12:
-            gx = 4.9 + swp * 0.9
+            gx = 5.4 + swp * 0.9
             px(gx, er + 0.05, 0.9, 1.4, QColor("#9FD3FF"))   # travelling shine
         else:
-            px(5.0, er + 0.25, 1.7, 0.45, QColor("#3A4256"))  # faint resting glint
+            px(9.6, er + 0.25, 1.7, 0.45, QColor("#3A4256"))  # faint resting glint
         if eyes == "shades_glint" and (frame % 24) < 12:
-            px(12.6, er + 0.35, 1.1, 0.8, QColor("#FF3B3B"))  # red status LED (skill)
+            px(12.8, er + 0.35, 1.1, 0.8, QColor("#FF3B3B"))  # red status LED (skill)
     else:
         eye(e1, eyes); eye(e2, eyes)
 
