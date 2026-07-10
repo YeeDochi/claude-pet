@@ -16,7 +16,7 @@ bin/claude-pet-install-hooks --remove
 # Restart any running Claude Code session afterward so it picks up the hooks.
 
 # Preview all creature states as a sprite sheet (renders offscreen, saves a PNG)
-python3 src/creature.py                 # NOTE: output path is hardcoded near the bottom of the file
+python3 src/creature.py [out.png]       # sprite sheet -> given path, else a temp file
 
 # Dependency
 pip install PyQt6                        # requires KDE Plasma/Wayland with XWayland; qdbus6 for click-to-focus

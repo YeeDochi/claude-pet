@@ -351,8 +351,9 @@ def draw_creature(p, ox, oy, u, state, frame, facing=1):
         rect(1.9, 5.8, 1.0, 0.5, QColor("#8FD0EA"))      # speaker slit
         rw = frame % 46                                  # ring waves radiate out
         if rw < 34:
-            step = rw // 12                              # 0,1,2 -> further out
-            rect(-0.2 - step * 0.9, 4.2 - step * 0.7, 0.8, 0.8, BULB_L)
+            step = rw // 12                              # 0,1,2 -> up from the ear
+            # radiate up-and-slightly-left but stay on-window (only col >= -1 shows)
+            rect(0.3 - step * 0.5, 4.6 - step * 1.1, 0.8, 0.8, BULB_L)
     elif prop == "clones":
         # two mini creatures filing out to the right, bobbing in sequence,
         # each with a dark outline + shadow so they pop off the body.
