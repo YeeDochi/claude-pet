@@ -18,10 +18,22 @@ import math
 from PyQt6.QtGui import QColor
 from PyQt6.QtCore import QRectF
 
+# autonomous (auto/bypass mode) variants: the pet wears a visor and wanders while
+# it works, each work type keeping its own prop. `autopilot` is the generic cruise.
+AUTO_VARIANTS = ("auto_computer", "auto_search", "auto_web",
+                 "auto_agent", "auto_skill")
+# states that animate with a walking leg cycle (they roam or stroll)
+_WALKERS = ("walk", "autopilot") + AUTO_VARIANTS
+
 STATES = ("idle", "walk", "work_computer", "work_search", "work_web",
-          "work_agent", "work_skill", "autopilot", "thinking", "attention",
+          "work_agent", "work_skill", "autopilot") + AUTO_VARIANTS + (
+          "thinking", "attention",
           "error", "celebrate", "sleeping", "held", "falling",
           "jump", "wave", "sing", "juggle", "float")
+
+# prop drawn beside each auto_* variant (auto_skill uses a visor glint instead)
+_AUTO_PROP = {"auto_computer": "window", "auto_search": "magnify",
+              "auto_web": "phone", "auto_agent": "clones_v"}
 
 # short spoken line per communicative state (typed out in a bubble)
 SPEECH = {
@@ -103,6 +115,14 @@ def draw_creature(p, ox, oy, u, state, frame, facing=1):
         tilt = 2.0
         eyes = "shades"
         prop = "gear"
+    elif state in AUTO_VARIANTS:
+        # visor on, wandering while it works: same relaxed stroll as autopilot,
+        # but each work type carries its own prop (auto_skill: a red visor glint).
+        bob = _sin(frame, 20, 0.5)
+        legphase = (frame / 16.0) % 1.0
+        tilt = 2.0
+        eyes = "shades_glint" if state == "auto_skill" else "shades"
+        prop = _AUTO_PROP.get(state)
     elif state == "thinking":
         bob = _sin(frame, 46, 0.35)
         tilt = _sin(frame, 92, 3.0)               # slow head cant, "hmm"
@@ -180,7 +200,8 @@ def draw_creature(p, ox, oy, u, state, frame, facing=1):
     arm = {"work_computer": "none", "attention": "up", "celebrate": "up",
            "held": "up", "falling": "up", "juggle": "up", "wave": "wave"}.get(state, "side")
     arm_swing = (_sin(frame, 12, 0.5) if state == "walk" else
-                 _sin(frame, 16, 0.5) if state == "autopilot" else 0.0)
+                 _sin(frame, 16, 0.5) if state in ("autopilot",) + AUTO_VARIANTS
+                 else 0.0)
 
     # ---- geometry (art-pixel space), origin at ox,oy ----
     # body occupies cols 3..18, rows 5..12 ; legs rows 12..15 ; crown rows 3..5
@@ -213,7 +234,7 @@ def draw_creature(p, ox, oy, u, state, frame, facing=1):
     leg_cols = [4.0, 7.5, 11.5, 15.0]
     for i, lc in enumerate(leg_cols):
         lift = 0.0
-        if state in ("walk", "autopilot"):
+        if state in _WALKERS:
             ph = (legphase + (0.5 if i % 2 else 0.0)) % 1.0
             lift = max(0.0, math.sin(ph * math.pi)) * 1.3
         if state == "work_computer" and i >= 2:  # front two legs tap
@@ -271,11 +292,13 @@ def draw_creature(p, ox, oy, u, state, frame, facing=1):
             px(col, er, 1.7, 0.5, EYE); px(col + 0.6, er - 0.6, 0.5, 1.7, EYE)
         elif kind == "happy":
             px(col, er + 0.8, 0.6, 0.6, EYE); px(col + 0.55, er + 0.3, 0.6, 0.6, EYE); px(col + 1.1, er + 0.8, 0.6, 0.6, EYE)
-    if eyes == "shades":
+    if eyes in ("shades", "shades_glint"):
         # cool wraparound visor across the face (autopilot "I got this")
         px(4.6, er - 0.2, 10.8, 1.7, EYE)                    # dark lens band
         px(4.6, er - 0.2, 10.8, 0.45, QColor("#6A6A78"))     # top glint
         px(5.2, er + 0.2, 2.0, 0.5, QColor("#9AA0AA"))       # corner shine
+        if eyes == "shades_glint" and (frame % 24) < 12:
+            px(12.4, er + 0.25, 1.3, 0.8, QColor("#FF3B3B"))  # red glint (skill)
     else:
         eye(e1, eyes); eye(e2, eyes)
 
@@ -392,6 +415,25 @@ def draw_creature(p, ox, oy, u, state, frame, facing=1):
             rect(gx + 0.4, gy + 2.2, 0.85, 0.85, cog)    # SW
             rect(gx + 2.2, gy + 2.2, 0.85, 0.85, cog)    # SE
         rect(gx + 1.45, gy + 1.45, 0.6, 0.6, hole)       # center hole
+    elif prop == "window":
+        # a little blue code window floating beside the visor (auto_computer)
+        wx, wy = 16.8, 1.2
+        rect(wx, wy, 5.4, 4.4, QColor("#2A3550"))        # window body
+        rect(wx, wy, 5.4, 1.0, QColor("#3E5488"))        # title bar
+        rect(wx + 0.4, wy + 0.35, 0.4, 0.4, QColor("#E06C6C"))  # close dot
+        rect(wx + 1.1, wy + 0.35, 0.4, 0.4, QColor("#E0B24C"))  # min dot
+        rect(wx + 0.5, wy + 1.5, 3.4, 0.5, QColor("#6FC3E0"))   # code line
+        rect(wx + 0.5, wy + 2.4, 2.4, 0.5, QColor("#8FD0EA"))   # code line
+        if (frame % 30) < 18:
+            rect(wx + 0.5, wy + 3.3, 1.6, 0.5, QColor("#6FC3E0"))  # typing line
+    elif prop == "clones_v":
+        # mini creatures like `clones`, but each wears a tiny visor too
+        for k in range(2):
+            mb = _sin(frame, 18, 0.6, phase=k * 0.5)
+            bx = 18.5 + k * 2.2
+            rect(bx, 9.5 + mb, 1.8, 1.8, ORANGE)         # tiny body
+            rect(bx, 9.5 + mb, 1.8, 0.5, ORANGE_L)       # highlight
+            rect(bx + 0.2, 10.15 + mb, 1.4, 0.5, EYE)    # tiny visor band
     elif prop == "note":
         # music notes bobbing up beside the head, cycling
         for k in range(2):
@@ -445,12 +487,17 @@ if __name__ == "__main__":
               "work_search": "검색 중(돋보기)", "work_web": "웹/전화",
               "work_agent": "에이전트(분신)", "work_skill": "스킬(모자)",
               "autopilot": "자동진행(순항)",
+              "auto_computer": "auto·코딩(파란창)", "auto_search": "auto·검색",
+              "auto_web": "auto·웹", "auto_agent": "auto·에이전트",
+              "auto_skill": "auto·스킬(붉은안광)",
               "thinking": "생각 중(음...)", "attention": "봐줘!(입력대기)",
               "celebrate": "완료/신남", "error": "에러", "sleeping": "쿨쿨(수면)",
               "jump": "점프", "wave": "손 흔들기", "sing": "노래", "juggle": "저글링",
               "float": "둥실둥실"}
     order = ["idle", "walk", "work_computer", "work_search", "work_web",
-             "work_agent", "work_skill", "autopilot", "thinking", "attention",
+             "work_agent", "work_skill", "autopilot",
+             "auto_computer", "auto_search", "auto_web", "auto_agent", "auto_skill",
+             "thinking", "attention",
              "celebrate", "error", "sleeping",
              "jump", "wave", "sing", "juggle", "float"]
     # show two animation frames per state to convey motion

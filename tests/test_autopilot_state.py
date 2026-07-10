@@ -10,17 +10,45 @@ def _pre(tool, pm=None):
     return ev
 
 
-def test_auto_mode_shows_autopilot():
+# --- auto mode: each work type gets its own visor-clad variant ---
+
+def test_auto_computer_variant():
     e = StateEngine()
     e.handle(_pre("Edit", pm="auto"), 0.0)
-    assert e.display_state(0.0) == "autopilot"
+    assert e.display_state(0.0) == "auto_computer"
 
 
-def test_bypass_permissions_shows_autopilot():
+def test_auto_search_variant():
     e = StateEngine()
-    e.handle(_pre("Bash", pm="bypassPermissions"), 0.0)
-    assert e.display_state(0.0) == "autopilot"
+    e.handle(_pre("Read", pm="auto"), 0.0)
+    assert e.display_state(0.0) == "auto_search"
 
+
+def test_auto_web_variant():
+    e = StateEngine()
+    e.handle(_pre("WebFetch", pm="bypassPermissions"), 0.0)
+    assert e.display_state(0.0) == "auto_web"
+
+
+def test_auto_agent_variant():
+    e = StateEngine()
+    e.handle(_pre("Task", pm="auto"), 0.0)
+    assert e.display_state(0.0) == "auto_agent"
+
+
+def test_auto_skill_variant():
+    e = StateEngine()
+    e.handle(_pre("Skill", pm="auto"), 0.0)
+    assert e.display_state(0.0) == "auto_skill"
+
+
+def test_mcp_tool_in_auto_is_web_variant():
+    e = StateEngine()
+    e.handle(_pre("mcp__gitlab__get_project", pm="auto"), 0.0)
+    assert e.display_state(0.0) == "auto_web"
+
+
+# --- non-auto modes behave exactly as before (no regression) ---
 
 def test_default_mode_shows_normal_work():
     e = StateEngine()
@@ -29,47 +57,28 @@ def test_default_mode_shows_normal_work():
 
 
 def test_missing_permission_mode_is_normal_work():
-    # older sessions / hook without the field must behave exactly as before
     e = StateEngine()
     e.handle(_pre("Read"), 0.0)
     assert e.display_state(0.0) == "work_search"
 
 
-def test_auto_mode_keeps_subagent_distinct():
-    # spawning a subagent is a milestone worth showing even while autonomous
-    e = StateEngine()
-    e.handle(_pre("Task", pm="auto"), 0.0)
-    assert e.display_state(0.0) == "work_agent"
-
-
-def test_auto_mode_keeps_skill_distinct():
-    e = StateEngine()
-    e.handle(_pre("Skill", pm="bypassPermissions"), 0.0)
-    assert e.display_state(0.0) == "work_skill"
-
-
-def test_auto_mode_collapses_routine_tools():
-    # routine edit/search/web still collapse to the single autopilot cruise
-    e = StateEngine()
-    e.handle(_pre("Read", pm="auto"), 0.0)
-    assert e.display_state(0.0) == "autopilot"
-
-
-def test_plan_mode_is_not_autopilot():
-    # plan mode is read-only planning, not autonomous grinding
+def test_plan_mode_is_not_auto_variant():
     e = StateEngine()
     e.handle(_pre("Read", pm="plan"), 0.0)
     assert e.display_state(0.0) == "work_search"
 
 
-def test_autopilot_decays_when_quiet():
+# --- fallbacks & lifecycle ---
+
+def test_custom_mapped_tool_in_auto_falls_back_to_autopilot():
+    # a tool the user remapped to a non-work state has no variant -> generic cruise
+    e = StateEngine(tool_states={"Grep": "sing"})
+    e.handle(_pre("Grep", pm="auto"), 0.0)
+    assert e.display_state(0.0) == "autopilot"
+
+
+def test_auto_variant_decays_when_quiet():
     e = StateEngine()
     e.handle(_pre("Edit", pm="auto"), 0.0)
-    assert e.display_state(1.0) == "autopilot"
+    assert e.display_state(1.0) == "auto_computer"
     assert e.display_state(1000.0) in ("idle", "sleeping")
-
-
-def test_autopilot_is_overridable():
-    e = StateEngine(event_states={"autopilot": "sing"})
-    e.handle(_pre("Edit", pm="auto"), 0.0)
-    assert e.display_state(0.0) == "sing"

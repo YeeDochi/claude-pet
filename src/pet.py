@@ -31,7 +31,7 @@ from PyQt6.QtDBus import QDBusConnection
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import creature as C
-from state_engine import StateEngine
+from state_engine import StateEngine, AUTO_STATES
 import focus
 import hostinfo
 import petconfig
@@ -50,7 +50,9 @@ STATE_LABELS = {
     "idle": "대기", "sleeping": "자는 중", "walk": "산책",
     "thinking": "고민 중", "work_computer": "작업 중", "work_search": "탐색 중",
     "work_web": "연락 중", "work_agent": "서브에이전트", "work_skill": "스킬 사용",
-    "autopilot": "자동 진행", "attention": "입력 대기!", "celebrate": "완료!",
+    "autopilot": "자동 진행", "auto_computer": "자동·코딩",
+    "auto_search": "자동·탐색", "auto_web": "자동·웹", "auto_agent": "자동·에이전트",
+    "auto_skill": "자동·스킬", "attention": "입력 대기!", "celebrate": "완료!",
     "error": "에러",
 }
 # representative animation frame to freeze for each state's tray icon
@@ -294,7 +296,9 @@ class Pet(QWidget):
         # (and wherever you drag it), but the pet keeps its normal animation.
         floating = self._floating and self.mode not in ("held", "thrown")
         following = self._follow and self.mode not in ("held", "thrown")
-        roaming = eff in ("idle", "sleeping") and self.mode == "roam" and not self.dnd
+        # auto/bypass work states wander too (visor on): they roam like idle does
+        roaming = (eff in ("idle", "sleeping") or eff in AUTO_STATES) \
+            and self.mode == "roam" and not self.dnd
 
         if self.mode == "held":
             self._render_state = "held"     # dangling from the cursor
@@ -418,8 +422,13 @@ class Pet(QWidget):
         else:
             self.facing = 1 if dx > 0 else -1
             self.x += speed * self.facing
-            self._render_state = "walk"
+            self._render_state = self._walk_render()
         self.y = floor
+
+    def _walk_render(self):
+        """Render state while walking a roam leg: an auto_* variant walks with its
+        visor + prop on; plain idle/waiting roaming shows the generic walk."""
+        return self.claude_state if self.claude_state in AUTO_STATES else "walk"
 
     def _on_cursor(self, xy):
         try:

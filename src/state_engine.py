@@ -13,19 +13,26 @@ TOOL_STATES = {
     "Task": "work_agent",
     "Skill": "work_skill",
 }
-WORK_STATES = {"work_computer", "work_search", "work_web",
-               "work_agent", "work_skill", "autopilot"}
-
 # permission_mode values (present on every hook payload) that mean Claude is
-# grinding on its own without stopping to ask — the pet cruises on "autopilot"
-# instead of showing each individual tool. "plan" is deliberately excluded: it's
-# read-only planning, not autonomous execution.
+# grinding on its own without stopping to ask. "plan" is excluded: it's read-only
+# planning, not autonomous execution.
 AUTO_MODES = {"auto", "bypassPermissions"}
 
-# work states kept distinct even under an auto mode — the "milestone" tools
-# (spawning a subagent, running a skill) still change the pet's face so a long
-# autonomous run isn't one unchanging autopilot. Routine edit/search/web collapse.
-AUTO_KEEP = {"work_agent", "work_skill"}
+# Under an auto mode the pet puts its visor on and wanders while it works: each
+# work type keeps its own flavour (prop/animation) but visor-clad. Maps the plain
+# work state -> its autonomous "auto_*" variant. Anything without a variant falls
+# back to the generic `autopilot` cruise.
+AUTO_VARIANT = {
+    "work_computer": "auto_computer",
+    "work_search": "auto_search",
+    "work_web": "auto_web",
+    "work_agent": "auto_agent",
+    "work_skill": "auto_skill",
+}
+AUTO_STATES = {"autopilot", *AUTO_VARIANT.values()}
+
+WORK_STATES = {"work_computer", "work_search", "work_web",
+               "work_agent", "work_skill"} | AUTO_STATES
 
 # the direct single-state events, keyed by short name -> default state. Users can
 # override any of these via config (see petconfig.py).
@@ -52,9 +59,11 @@ MAPPABLE_STATES = {
 PRIORITY = {
     "attention": 6, "error": 5,
     "work_computer": 4, "work_search": 4, "work_web": 4,
-    "work_agent": 4, "work_skill": 4, "autopilot": 4,
+    "work_agent": 4, "work_skill": 4,
     "thinking": 3, "celebrate": 2, "idle": 1, "sleeping": 0,
 }
+for _st in AUTO_STATES:                 # auto variants show at work-level priority
+    PRIORITY[_st] = 4
 
 DEBOUNCE = 0.8
 SLEEP_TIMEOUT = 60.0
@@ -135,11 +144,10 @@ class StateEngine:
             s.set_state(self._events["prompt"], now)
         elif name == "PreToolUse":
             st = self._tool_state(ev.get("tool_name", ""))
-            if ev.get("permission_mode") in AUTO_MODES and st not in AUTO_KEEP:
-                # cruising solo: collapse routine edit/search/web into one
-                # autopilot state, but keep the milestone tools (subagent, skill)
-                # distinct so a long autonomous run still shows what's happening.
-                st = self._events["autopilot"]
+            if ev.get("permission_mode") in AUTO_MODES:
+                # visor on, wandering while it works: each work type keeps its own
+                # flavour as an auto_* variant; anything else -> generic autopilot.
+                st = AUTO_VARIANT.get(st, self._events["autopilot"])
             self._set_work(s, st, now)
         elif name == "Notification":
             nt = ev.get("notification_type", "")
