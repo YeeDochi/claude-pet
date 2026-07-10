@@ -505,18 +505,26 @@ class Pet(QWidget):
             '      return c.desktop<0||c.desktop===workspace.currentDesktop;'
             '  }catch(e){}'
             '  return true;}'                             # unknown API -> don't filter
-            'function _dump(){'
+            'function _dump(top){'
             # stackingOrder is bottom->top, so windows.window_at's "last match
             # wins" correctly picks the TOPMOST window under the pet.
             '  var ws=(typeof workspace.stackingOrder!=="undefined"&&workspace.stackingOrder)'
             '    ?workspace.stackingOrder'
             '    :((typeof workspace.windowList==="function")'
             '      ?workspace.windowList():workspace.clientList());'
-            '  var o=[];'
+            '  var ent=[];'
             '  for(var i=0;i<ws.length;i++){var c=ws[i];var g=c.frameGeometry;'
             '    if(g&&!c.minimized&&!c.hidden&&_onDesk(c))'   # visible, on this desktop
-            '      o.push(c.internalId+";"+(c.resourceClass||"")+";"'
-            '      +g.x+","+g.y+","+g.width+","+g.height+";"+(c.pid||0));}'
+            '      ent.push({id:(""+c.internalId),'
+            '        s:c.internalId+";"+(c.resourceClass||"")+";"'
+            '        +g.x+","+g.y+","+g.width+","+g.height+";"+(c.pid||0)});}'
+            # workspace.stackingOrder lags a raise in this KWin (it settles AFTER
+            # windowActivated fires), so a just-activated window would still look
+            # buried for one click. We KNOW it is now topmost -> force it last.
+            '  if(top){var tid=""+top.internalId;'
+            '    for(var j=0;j<ent.length;j++){if(ent[j].id===tid){'
+            '      ent.push(ent.splice(j,1)[0]);break;}}}'
+            '  var o=[];for(var k=0;k<ent.length;k++)o.push(ent[k].s);'
             '  callDBus(SVC,"/","","push",o.join("|"));'
             '}'
             'function _hook(c){if(!c)return;'
@@ -530,11 +538,10 @@ class Pet(QWidget):
             'if(workspace.windowAdded)workspace.windowAdded.connect('
             '  function(c){_hook(c);_dump();});'
             'if(workspace.windowRemoved)workspace.windowRemoved.connect(_dump);'
-            # re-dump when focus/stacking changes so occlusion is noticed even on
-            # a pure RAISE (click a window behind ours -> only stacking changes,
-            # no geometry/minimize event). stackingOrderChanged is the key one;
-            # windowActivated is a fallback for KWin builds without it.
-            'if(workspace.stackingOrderChanged)workspace.stackingOrderChanged.connect(_dump);'
+            # re-dump on RAISE (click a window behind ours). windowActivated hands
+            # us the raised window; _dump forces it to the top of the reported
+            # order, because workspace.stackingOrder hasn't settled yet when this
+            # fires (relying on it lagged occlusion by one click).
             'if(workspace.windowActivated)workspace.windowActivated.connect(_dump);'
             '_dump();'
         )
