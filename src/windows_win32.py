@@ -24,7 +24,8 @@ DWMWA_EXTENDED_FRAME_BOUNDS = 9
 DWMWA_CLOAKED = 14
 SW_RESTORE = 9
 TH32CS_SNAPPROCESS = 0x00000002
-_WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+_WNDENUMPROC = (ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+                if hasattr(ctypes, "windll") else None)   # WINFUNCTYPE is Windows-only
 
 
 class _PROCESSENTRY32(ctypes.Structure):
