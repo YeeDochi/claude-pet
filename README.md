@@ -14,11 +14,25 @@ Drawn entirely in code — no image assets — so it's self-contained and origin
 
 ## Install
 
+One line — clones, installs PyQt6, and registers the hooks + skill (needs Python & git):
+
+```bash
+# Linux / macOS
+curl -fsSL https://raw.githubusercontent.com/YeeDochi/claude-pet/master/install.py | python3 -
+```
+```powershell
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/YeeDochi/claude-pet/master/install.py | python -
+```
+
+<details><summary>Prefer to do it by hand</summary>
+
 ```bash
 git clone https://github.com/YeeDochi/claude-pet ~/claude-pet
 pip install PyQt6
 ~/claude-pet/bin/claude-pet-install     # hooks + the /claude-pet skill (idempotent)
 ```
+</details>
 
 New Claude Code sessions then auto-spawn a pet. Restart any already-running session
 to pick up the hooks — or launch one now with `~/claude-pet/bin/claude-pet`.

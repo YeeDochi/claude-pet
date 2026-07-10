@@ -12,11 +12,25 @@ Claude가 작업하면 타이핑하고, 입력이 필요하면 기다리고, 끝
 
 ## 설치
 
+한 줄 — 클론·PyQt6 설치·훅+스킬 등록까지 한 번에 (Python·git 필요):
+
+```bash
+# Linux / macOS
+curl -fsSL https://raw.githubusercontent.com/YeeDochi/claude-pet/master/install.py | python3 -
+```
+```powershell
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/YeeDochi/claude-pet/master/install.py | python -
+```
+
+<details><summary>직접 단계별로</summary>
+
 ```bash
 git clone https://github.com/YeeDochi/claude-pet ~/claude-pet
 pip install PyQt6
 ~/claude-pet/bin/claude-pet-install     # 훅 + /claude-pet 스킬 (idempotent)
 ```
+</details>
 
 이후 새 Claude Code 세션은 펫을 자동으로 띄워요. 이미 돌아가던 세션은 재시작해야 훅을
 인식해요 — 아니면 `~/claude-pet/bin/claude-pet`로 지금 하나 띄워도 돼요.
