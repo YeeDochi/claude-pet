@@ -30,7 +30,7 @@ off (💤) between tasks, and clamber over whatever else is on screen.
 
 ## Install
 
-One line — clones, installs PyQt6, and registers the hooks + skill (needs Python & git):
+One line — clones (or updates), installs dependencies (PyQt6, plus pyobjc on macOS), and registers the hooks + skill (needs Python & git). Re-run it anytime to update:
 
 ```bash
 # Linux / macOS
@@ -45,16 +45,18 @@ irm https://raw.githubusercontent.com/YeeDochi/claude-pet/master/install.py | py
 
 ```bash
 git clone https://github.com/YeeDochi/claude-pet ~/claude-pet
-pip install PyQt6
-~/claude-pet/bin/claude-pet-install     # hooks + the /claude-pet skill (idempotent)
+~/claude-pet/bin/claude-pet-install     # installs deps (PyQt6, +Quartz on macOS) + hooks + /claude-pet skill (idempotent)
 ```
 </details>
 
 New Claude Code sessions then auto-spawn a pet. Restart any already-running session
 to pick up the hooks — or launch one now with `~/claude-pet/bin/claude-pet`.
 
-Best on **KDE Plasma**; the creature runs anywhere PyQt6 does, with the KDE-only
-window tricks switching off gracefully. See **[Platform support](docs/platform.md)**.
+Best on **KDE Plasma**. Perching on and riding windows also works on **Windows**
+(Win32) and **macOS** (experimental — needs `pyobjc-framework-Quartz`, which the
+installer adds automatically; the pet self-calibrates window coordinates at
+runtime). Elsewhere the window tricks switch off gracefully and the pet just
+roams. See **[Platform support](docs/platform.md)**.
 
 ## What it shows
 

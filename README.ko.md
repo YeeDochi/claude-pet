@@ -32,7 +32,7 @@ Claude가 작업하면 타이핑하고, 입력이 필요하면 기다리고, 끝
 
 ## 설치
 
-한 줄 — 클론·PyQt6 설치·훅+스킬 등록까지 한 번에 (Python·git 필요):
+한 줄 — 클론(또는 업데이트)·의존성 설치(PyQt6, macOS면 pyobjc까지)·훅+스킬 등록까지 한 번에 (Python·git 필요). 업데이트도 이 한 줄 다시 실행:
 
 ```bash
 # Linux / macOS
@@ -47,16 +47,17 @@ irm https://raw.githubusercontent.com/YeeDochi/claude-pet/master/install.py | py
 
 ```bash
 git clone https://github.com/YeeDochi/claude-pet ~/claude-pet
-pip install PyQt6
-~/claude-pet/bin/claude-pet-install     # 훅 + /claude-pet 스킬 (idempotent)
+~/claude-pet/bin/claude-pet-install     # 의존성(PyQt6, macOS면 Quartz) + 훅 + /claude-pet 스킬 (idempotent)
 ```
 </details>
 
 이후 새 Claude Code 세션은 펫을 자동으로 띄워요. 이미 돌아가던 세션은 재시작해야 훅을
 인식해요 — 아니면 `~/claude-pet/bin/claude-pet`로 지금 하나 띄워도 돼요.
 
-**KDE Plasma**에서 가장 잘 동작하고, 크리처 자체는 PyQt6 되는 곳이면 어디서든 실행돼요
-(KDE 전용 창 기능은 그 외 환경에선 곱게 꺼짐). → **[플랫폼 지원](docs/platform.md)**
+**KDE Plasma**에서 가장 잘 동작해요. 창 위에 올라타기/타고 다니기는 **Windows**(Win32)와
+**macOS**(실험적 — `pyobjc-framework-Quartz` 필요, 인스톨러가 자동 설치하고 창 좌표는
+런타임에 자동 보정)에서도 되고, 그 외 환경에선 창 기능만 곱게 꺼지고 펫은 그냥 돌아다녀요.
+→ **[플랫폼 지원](docs/platform.md)**
 
 ## 뭘 보여주나요
 

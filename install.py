@@ -6,7 +6,9 @@
   Windows (PowerShell):
     irm https://raw.githubusercontent.com/YeeDochi/claude-pet/master/install.py | python -
 
-Clones the repo, ensures PyQt6, and registers the Claude Code hooks + skill.
+Clones (or updates) the repo, ensures dependencies (PyQt6, plus
+pyobjc-framework-Quartz on macOS — the latter via bin/claude-pet-install), and
+registers the Claude Code hooks + skill. Re-run anytime to update.
 Override the location with the CLAUDE_PET_DIR environment variable.
 """
 import os
