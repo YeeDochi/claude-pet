@@ -21,6 +21,11 @@ SKILLS_DIR = os.path.expanduser(os.path.join("~", ".claude", "skills"))
 SKILL_LINK = os.path.join(SKILLS_DIR, "claudlet")
 SKILL_SRC = os.path.join(HERE, "skill")          # packaged skill data
 
+# README links shown when setup finishes. EN points at the repo root (GitHub
+# renders README.md there); KO points at the Korean README explicitly.
+README_EN = "https://github.com/YeeDochi/Claudlet"
+README_KO = "https://github.com/YeeDochi/Claudlet/blob/master/README.ko.md"
+
 _COLOR = (sys.stdout.isatty() and os.name != "nt"
           and os.environ.get("NO_COLOR") is None)
 
@@ -127,6 +132,47 @@ def _check_deps():
     return "%s installed" % ", ".join(pkgs)
 
 
+def _already_installed(install_hooks):
+    """True if claudlet hooks are ALREADY registered in Claude Code settings —
+    i.e. this run is a reinstall/update, not a first install. Must be checked
+    BEFORE install_hooks.main() runs (which registers them and would make every
+    run look installed). `is_ours` also matches the pre-rename claude-pet
+    markers, so upgrading from an old version still counts as an update. Any
+    read error -> treat as a fresh install (show both links; harmless)."""
+    try:
+        s = install_hooks.load()
+        for groups in s.get("hooks", {}).values():
+            if any(install_hooks.is_ours(g) for g in groups):
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def _readme_line(url, label):
+    return "  %s %s  %s" % (_c("1;36", "\U0001F4D6"), label, _c("4", url))
+
+
+def _print_readme(was_installed):
+    """Fresh install -> both README links (language unknown yet). Update -> the
+    one matching the user's resolved language (Korean locale -> KO, else EN),
+    since by now they have a config/locale we can read."""
+    if not was_installed:
+        print(_readme_line(README_EN, "Guide: "))
+        print(_readme_line(README_KO, "가이드:"))
+        return
+    try:
+        from claudlet import petconfig
+        cfg = petconfig.load_config()
+        lang = petconfig.resolve_lang(cfg.get("lang", "auto"))
+    except Exception:
+        lang = "en"                           # never fail setup over a link
+    if lang == "ko":
+        print(_readme_line(README_KO, "가이드:"))
+    else:
+        print(_readme_line(README_EN, "Guide:"))
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     from claudlet import install_hooks
@@ -136,6 +182,10 @@ def main(argv=None):
         # `claudlet-install --remove` and `claudlet-uninstall` never diverge.
         from claudlet import uninstall
         return uninstall.main(argv)
+
+    # capture BEFORE install_hooks.main() registers our hooks, else every run
+    # looks already-installed and the update branch would always win.
+    was_installed = _already_installed(install_hooks)
 
     head("setting up claudlet")
     ok("dependencies", _check_deps())
@@ -151,6 +201,7 @@ def main(argv=None):
     print("Restart Claude Code sessions to pick up the hooks (new sessions")
     print("auto-spawn a pet). Run one now with:  " + _c("1", "claudlet"))
     print("Update anytime from inside Claude Code with:  " + _c("1", "/claudlet update"))
+    _print_readme(was_installed)
 
 
 if __name__ == "__main__":
