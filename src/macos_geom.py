@@ -9,6 +9,8 @@ ever executed on macOS. Comments below flag every assumption that needs
 verifying; do not trust this file until someone with a Mac has run it.
 ****************************************************************************
 
+(proc_ancestors below uses `ps`, not Quartz, so it works even without pyobjc.)
+
 Like Win32 (and unlike KWin scripting), Quartz has no practical
 push-on-change API for "some window moved" that we could use from an
 unprivileged Python process, so `pet.py` polls `dump()` on a QTimer.
@@ -42,6 +44,12 @@ single riskiest assumption in the file — if the pet perches at mirrored
 heights, a y-flip (or per-display remap) is what's missing. Multi-monitor
 offsets (secondary displays at negative coords) are a second thing to check.
 
+Coordinate diagnosis note: perch matches a window's TOP EDGE by coordinate
+(6px tolerance) while containment/occlusion match by window ID, so if the pet
+can be dropped INTO a window (works) but won't perch ON TOP of it (fails), the
+coordinates are off — run the pet with CLAUDE_PET_DEBUG_GEOM=1 (see pet.py's
+_debug_geom_log) to print the rects, screen box and devicePixelRatio.
+
 Why exclude-by-PID and not by window id: on Windows we exclude the pet's own
 window by HWND (`QWidget.winId()` IS the HWND). On macOS `winId()` returns an
 NSView pointer, which is NOT a `kCGWindowNumber` (CGWindowID), so there is no
@@ -49,6 +57,7 @@ cheap, reliable id to compare. The pet's process id, however, is trivially
 correct and also covers any helper windows (tray popups, menus) the pet
 process creates — so the caller passes `exclude_pid=os.getpid()` instead.
 """
+import subprocess
 import sys
 
 # Guarded import: this module must be importable everywhere. On non-macOS
@@ -175,3 +184,47 @@ def dump(exclude_pid=None):
         return _format_dump(_enum_windows(exclude_pid))
     except Exception:
         return ""
+
+
+def _proc_parents():
+    """{pid: ppid} for every process, from one `ps` snapshot — the macOS
+    equivalent of the Win32 Toolhelp snapshot / reading all of /proc."""
+    out = {}
+    try:
+        res = subprocess.run(["ps", "-Ao", "pid=,ppid="],
+                             capture_output=True, text=True, timeout=3)
+    except Exception:
+        return out
+    for line in res.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 2:
+            try:
+                out[int(parts[0])] = int(parts[1])
+            except ValueError:
+                continue
+    return out
+
+
+def proc_ancestors(pid, max_hops=40):
+    """Set of pids from `pid` up to the top, via one `ps` snapshot — the macOS
+    counterpart of walking /proc/<pid>/stat's ppid chain (Linux) or a Toolhelp
+    snapshot (Windows). The terminal/IDE window's owning pid is one of these, so
+    matching it to a window's owner pid finds this session's host window. Uses
+    `ps` (not the Quartz backend, so it works without pyobjc and needs no
+    permission) and is called once at startup, sidestepping the fragile
+    kinfo_proc struct ABI a sysctl walk would depend on."""
+    acc = set()
+    try:
+        cur = int(pid)
+    except (TypeError, ValueError):
+        return acc
+    parent = _proc_parents()
+    if not parent:
+        return acc
+    while cur > 1 and cur not in acc and len(acc) < max_hops:
+        acc.add(cur)
+        nxt = parent.get(cur)
+        if not nxt:
+            break
+        cur = nxt
+    return acc

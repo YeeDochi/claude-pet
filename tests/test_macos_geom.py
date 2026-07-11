@@ -139,3 +139,42 @@ def test_dump_survives_raising_backend(monkeypatch):
             raise RuntimeError("no window server connection")
     monkeypatch.setattr(macos_geom, "Quartz", _Boom([]))
     assert macos_geom.dump() == ""      # never raises into the poll timer
+
+
+# --- proc_ancestors (ps-based; does NOT need pyobjc, so it's exercised anywhere) ---
+
+def test_proc_ancestors_empty_for_bad_pid():
+    assert macos_geom.proc_ancestors(None) == set()
+    assert macos_geom.proc_ancestors("not-a-pid") == set()
+
+
+def test_proc_ancestors_empty_without_ps(monkeypatch):
+    monkeypatch.setattr(macos_geom, "_proc_parents", lambda: {})
+    assert macos_geom.proc_ancestors(1234) == set()
+
+
+def test_proc_ancestors_walks_mocked_tree(monkeypatch):
+    # 4321 -> 300 -> 200 -> 1 (init); the walk collects the chain, stops at root
+    monkeypatch.setattr(macos_geom, "_proc_parents",
+                        lambda: {4321: 300, 300: 200, 200: 1, 999: 998})
+    assert macos_geom.proc_ancestors(4321) == {4321, 300, 200}
+
+
+def test_proc_ancestors_survives_a_cycle(monkeypatch):
+    # a bogus ppid cycle must terminate (cur-in-acc guard), not spin forever
+    monkeypatch.setattr(macos_geom, "_proc_parents", lambda: {10: 20, 20: 10})
+    assert macos_geom.proc_ancestors(10) == {10, 20}
+
+
+def test_proc_ancestors_respects_max_hops(monkeypatch):
+    chain = {i: i + 1 for i in range(2, 100)}
+    monkeypatch.setattr(macos_geom, "_proc_parents", lambda: chain)
+    assert len(macos_geom.proc_ancestors(2, max_hops=5)) == 5
+
+
+def test_proc_ancestors_walks_real_process_tree():
+    if sys.platform != "darwin":
+        return
+    acc = macos_geom.proc_ancestors(os.getpid())
+    assert os.getpid() in acc
+    assert len(acc) >= 1

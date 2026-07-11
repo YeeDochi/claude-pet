@@ -608,6 +608,35 @@ class Pet(QWidget):
         except Exception:
             return
         self._on_geom(dump)
+        self._debug_geom_log(dump)
+
+    def _debug_geom_log(self, dump):
+        # Opt-in coordinate dump (CLAUDE_PET_DEBUG_GEOM=1) to diagnose perch/
+        # occlusion alignment on untested platforms: prints the parsed window
+        # rects alongside the pet's feet and the screen geometry + devicePixelRatio
+        # so a Retina/point-vs-pixel or y-offset mismatch is visible. Logs only
+        # when the feed changes (anti-spam). Wrapped: debug output must never
+        # break the pet.
+        if not os.environ.get("CLAUDE_PET_DEBUG_GEOM"):
+            return
+        if dump == getattr(self, "_dbg_last", None):
+            return
+        self._dbg_last = dump
+        try:
+            scr = self.screen() or QApplication.primaryScreen()
+            g = scr.geometry()
+            sys.stderr.write(
+                "[claude-pet geom] dpr=%.2f screen=%d,%d,%dx%d "
+                "pet=(%d,%d) feet_y=%d\n" % (
+                    scr.devicePixelRatio(), g.x(), g.y(), g.width(), g.height(),
+                    int(self.x), int(self.y), int(self.y) + FOOT_Y))
+            for w in self._wins:
+                sys.stderr.write("[claude-pet geom]   win %s cls=%s  %d,%d %dx%d "
+                                 "top=%d pid=%s\n" % (
+                                     w.wid, w.title, w.x, w.y, w.w, w.h, w.y, w.pid))
+            sys.stderr.flush()
+        except Exception:
+            pass
 
     def _start_geom_script(self):
         svc = self._dbus_name
@@ -737,9 +766,9 @@ class Pet(QWidget):
     @staticmethod
     def _proc_ancestors(pid, max_hops=40):
         """Set of pids from `pid` up to the top: via /proc/<pid>/stat on Linux,
-        or a Toolhelp process snapshot on Windows. The terminal/IDE window's
-        owning pid is one of these, so matching it to a window pid finds our
-        host window. Empty on macOS or pid<=0 (tracking then off)."""
+        a Toolhelp process snapshot on Windows, or a `ps` snapshot on macOS. The
+        terminal/IDE window's owning pid is one of these, so matching it to a
+        window pid finds our host window. Empty on pid<=0 (tracking then off)."""
         try:
             cur = int(pid)
         except (TypeError, ValueError):
@@ -748,6 +777,12 @@ class Pet(QWidget):
             try:
                 import windows_win32
                 return windows_win32.proc_ancestors(cur, max_hops)
+            except Exception:
+                return set()
+        if sys.platform == "darwin":
+            try:
+                import macos_geom
+                return macos_geom.proc_ancestors(cur, max_hops)
             except Exception:
                 return set()
         acc = set()
@@ -1065,30 +1100,42 @@ class Pet(QWidget):
             self.tray = None
             return
         self.tray = QSystemTrayIcon(self)
-        m = QMenu()
-        self._act_follow = QAction(self.ui["follow"], m, checkable=True)
-        m.addAction(self._act_follow)
-        self._act_follow.triggered.connect(self._toggle_follow)
+        # macOS: DON'T give the native NSStatusItem a context menu. On macOS 26+
+        # the scene-backed status item re-runs its scene setup on every Space
+        # (desktop) switch, which calls popUpStatusItemMenu -> begins a menu
+        # tracking session with no mouse event behind it. Qt's cocoa menu-tracking
+        # observer then reads -[NSEvent clickCount] on that non-mouse event, which
+        # raises NSInternalInconsistencyException; the exception crosses the C++
+        # boundary uncaught and aborts the process. The identical menu is always
+        # available by right-clicking the pet itself (see _menu), which opens from
+        # a real mouse event and is unaffected. The persistent _act_* checkboxes
+        # (used only to mirror state INTO the tray menu) stay None here; _menu
+        # reads live state each time it opens, and _toggle_* guard on them.
+        if sys.platform != "darwin":
+            m = QMenu()
+            self._act_follow = QAction(self.ui["follow"], m, checkable=True)
+            m.addAction(self._act_follow)
+            self._act_follow.triggered.connect(self._toggle_follow)
 
-        sub = m.addMenu(self.ui["motions"])
-        for name, dur, label in MOTION_MENU:
-            act = QAction(label[self.lang], sub)
-            sub.addAction(act)
-            act.triggered.connect(
-                lambda _checked=False, n=name, d=dur: self._play_motion(n, d))
+            sub = m.addMenu(self.ui["motions"])
+            for name, dur, label in MOTION_MENU:
+                act = QAction(label[self.lang], sub)
+                sub.addAction(act)
+                act.triggered.connect(
+                    lambda _checked=False, n=name, d=dur: self._play_motion(n, d))
 
-        self._act_float = QAction(self.ui["float"], m, checkable=True)
-        m.addAction(self._act_float)
-        self._act_float.triggered.connect(self._toggle_float)
+            self._act_float = QAction(self.ui["float"], m, checkable=True)
+            m.addAction(self._act_float)
+            self._act_float.triggered.connect(self._toggle_float)
 
-        self._act_dnd = QAction(self.ui["quiet"], m, checkable=True)
-        m.addAction(self._act_dnd)
-        act_quit = QAction(self.ui["quit"], m)
-        m.addSeparator()
-        m.addAction(act_quit)
-        self._act_dnd.triggered.connect(self._toggle_dnd)
-        act_quit.triggered.connect(self._quit)
-        self.tray.setContextMenu(m)
+            self._act_dnd = QAction(self.ui["quiet"], m, checkable=True)
+            m.addAction(self._act_dnd)
+            act_quit = QAction(self.ui["quit"], m)
+            m.addSeparator()
+            m.addAction(act_quit)
+            self._act_dnd.triggered.connect(self._toggle_dnd)
+            act_quit.triggered.connect(self._quit)
+            self.tray.setContextMenu(m)
         self.tray.activated.connect(self._on_tray_activated)
         self._update_tray_icon(force=True)
         self.tray.show()
