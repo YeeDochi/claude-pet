@@ -2,6 +2,8 @@
 
 **English** | [한국어](README.ko.md)
 
+[![PyPI](https://img.shields.io/pypi/v/claudlet)](https://pypi.org/project/claudlet/)
+
 A tiny pixel creature that lives on your desktop and reacts to **Claude Code** in
 real time — it types while Claude works, waits when Claude needs you, celebrates
 when it's done, and roams around while you code. Click it to bring the terminal
@@ -43,6 +45,9 @@ Update later with `pipx upgrade claudlet && claudlet-install`, or from inside
 Claude Code with `/claudlet update`. To install an unreleased revision, point
 pipx at the repo instead: `pipx install "git+https://github.com/YeeDochi/Claudlet@master"`.
 
+Remove it with `claudlet-uninstall` (stops pets, unregisters the hooks + skill;
+add `--purge` to also delete your config), then `pipx uninstall claudlet`.
+
 <details><summary>Without pipx — one-line source install</summary>
 
 Clones (or updates) to `~/claudlet`, installs deps, registers hooks + skill:
@@ -77,7 +82,7 @@ or minimized.
 ## Docs
 
 - **[Usage & interaction](docs/usage.md)** — drag & throw, click-to-focus, tray menu, motions, autostart, uninstall
-- **[Configuration](docs/configuration.md)** — remap which animation shows for which Claude Code activity
+- **[Configuration](docs/configuration.md)** — remap which animation shows for which Claude Code activity (run `claudlet-config` or `/claudlet config` to locate & inspect it)
 - **[Platform support](docs/platform.md)** — support matrix + how to test on your OS
 
 ## License

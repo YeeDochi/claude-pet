@@ -2,6 +2,8 @@
 
 [English](README.md) | **한국어**
 
+[![PyPI](https://img.shields.io/pypi/v/claudlet)](https://pypi.org/project/claudlet/)
+
 **Claude Code**의 활동에 실시간으로 반응하는, 데스크톱 위에 사는 작은 픽셀 크리처예요.
 Claude가 작업하면 타이핑하고, 입력이 필요하면 기다리고, 끝나면 신나하고, 코딩하는 동안
 화면을 돌아다녀요. 클릭하면 터미널을 앞으로 가져와요.
@@ -45,6 +47,9 @@ claudlet-install      # 훅 + /claudlet 스킬 등록 (idempotent)
 `/claudlet update`. 아직 릴리즈 안 된 최신 버전을 쓰려면 repo를 직접 가리켜요:
 `pipx install "git+https://github.com/YeeDochi/Claudlet@master"`.
 
+제거는 `claudlet-uninstall` (펫 종료 + 훅·스킬 해제; `--purge`면 설정도 삭제) 후
+`pipx uninstall claudlet`.
+
 <details><summary>pipx 없이 — 소스 한 줄 설치</summary>
 
 `~/claudlet`로 클론(또는 업데이트)·의존성·훅+스킬 등록:
@@ -76,7 +81,7 @@ irm https://raw.githubusercontent.com/YeeDochi/Claudlet/master/install.py | pyth
 ## 문서
 
 - **[사용법 & 인터랙션](docs/usage.ko.md)** — 드래그/던지기, 클릭-포커스, 트레이 메뉴, 모션, 자동시작, 제거
-- **[설정](docs/configuration.ko.md)** — 어떤 활동에 어떤 애니를 보일지 재매핑
+- **[설정](docs/configuration.ko.md)** — 어떤 활동에 어떤 애니를 보일지 재매핑 (`claudlet-config` 또는 `/claudlet config`로 위치 확인·점검)
 - **[플랫폼 지원](docs/platform.ko.md)** — 지원 매트릭스 + 각 OS 테스트 방법
 
 ## 라이선스
