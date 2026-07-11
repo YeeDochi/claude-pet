@@ -21,6 +21,7 @@ Homepage = "https://github.com/YeeDochi/claude-pet"
 
 [project.scripts]
 claude-pet = "claude_pet.pet:main"
+claude-pet-attach = "claude_pet.attach:_cli"
 claude-pet-hook = "claude_pet.hook:_cli"
 claude-pet-motion = "claude_pet.motion:_cli"
 claude-pet-install = "claude_pet.install:main"

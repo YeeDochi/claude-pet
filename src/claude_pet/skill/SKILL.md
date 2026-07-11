@@ -9,120 +9,86 @@ A frameless roaming pixel creature. By default this **attaches** a pet to the
 **current session** (so it reacts to this session's Claude Code activity). Pass
 `standalone` for an unattached one.
 
+## How to run a claude-pet command
+
+claude-pet ships console commands (`claude-pet-attach`, `claude-pet-motion`,
+`claude-pet-install`). Define this helper once, then use it in the sections
+below — it prefers the installed command (pipx/pip put it on PATH) and falls
+back to a source checkout's `bin/` shim:
+```bash
+cpet() {  # usage: cpet <subcmd> [args...]   e.g. cpet attach --standalone
+  local name="claude-pet-$1"; shift
+  if command -v "$name" >/dev/null 2>&1; then "$name" "$@"
+  elif [ -x "$HOME/claude-pet/bin/$name" ]; then "$HOME/claude-pet/bin/$name" "$@"
+  else echo "claude-pet isn't installed — see the README"; return 127; fi
+}
+```
+
 ## Routing
 
 Look at the argument the user passed after `/claude-pet`:
 
 - a **motion name** (`jump`, `wave`, `sing`, `juggle`, `float`, `celebrate`,
   `thinking`, `sleeping`, `error`, `attention`), or `list`, or `stop`/`clear`
-  → run the motion helper (below); do NOT launch a pet.
-- `update` (or `업데이트`) → the update section.
-- `standalone` → the standalone section.
-- nothing → the attach section.
+  → **Trigger a motion**; do NOT launch a pet.
+- `update` (or `업데이트`) → **Update**.
+- `standalone` → **Standalone**.
+- nothing → **Attach** (default).
 
-### Trigger a motion
+## Attach (default)
 
-Run the helper with the interpreter and a native path, so it works on Windows
-git-bash too (a bare `~/...` path or shebang launch doesn't):
 ```bash
-PY=python3; "$PY" -c "" >/dev/null 2>&1 || PY=python
-MOTION=$("$PY" -c "import os;print(os.path.expanduser('~/claude-pet/bin/claude-pet-motion'))")
-"$PY" "$MOTION" <arg>
+cpet attach
 ```
-e.g. `"$PY" "$MOTION" jump`, `"$PY" "$MOTION" float` (holds until
-`"$PY" "$MOTION" stop`), `"$PY" "$MOTION" list`.
-The helper broadcasts to every running pet and prints how many reacted; if it
-says `-> 0 pet(s)`, no pet is running — offer to attach one with `/claude-pet`.
-
-## `update` — pull the latest version & reinstall
-
-Pull the repo and re-run the installer (installs any new deps, re-registers
-hooks/skill, refreshes the `claude-pet` PATH link). Use native paths + a probed
-interpreter, same as everywhere else:
-```bash
-PY=python3; "$PY" -c "" >/dev/null 2>&1 || PY=python
-DIR=$("$PY" -c "import os; print(os.path.expanduser('~/claude-pet'))")
-git -C "$DIR" pull --ff-only && "$PY" "$DIR/bin/claude-pet-install"
-```
-If `git pull` fails with local changes / divergence, report that (don't force).
-New code only takes effect on a **fresh** pet + session: tell the user to close
-any running pet (right-click → 종료) and restart this Claude Code session (or
-run `/claude-pet` again) so the reinstalled hooks and new pet code load.
-
-## Default: attach to THIS session
-
-0. **Pick a Python.** `python3` is canonical on Linux/macOS; on Windows it's
-   often a Microsoft Store alias stub that's *present on PATH* but exits
-   nonzero without doing anything, so `command -v` alone can't tell it apart
-   from a real interpreter — probe that it actually runs:
-   ```bash
-   PY=python3; "$PY" -c "" >/dev/null 2>&1 || PY=python
-   ```
-
-1. **Find this session's id.** Claude Code sets `$CLAUDE_CODE_SESSION_ID` for
-   the running session; fall back to the newest transcript under
-   `~/.claude/projects/` if it's unset:
-   ```bash
-   SID="${CLAUDE_CODE_SESSION_ID:-$(ls -t ~/.claude/projects/*/*.jsonl 2>/dev/null | head -1 | xargs -n1 basename | sed 's/\.jsonl$//')}"
-   ```
-
-2. **Detect the host app** (terminal/IDE) so click-to-focus targets the right
-   window. Build the `src` path with `os.path.expanduser` *inside* Python — do
-   NOT interpolate `$HOME` into the `-c` string: on Windows git-bash `$HOME` is a
-   `/c/Users/...` MSYS path that native `python.exe` can't import from (MSYS path
-   conversion doesn't reach inside quoted program text):
-   ```bash
-   HOST=$("$PY" -c "import sys, os; sys.path.insert(0, os.path.expanduser('~/claude-pet/src')); import hostinfo; print(hostinfo.detect_host())")
-   ```
-
-3. **Skip if one is already attached, else launch it bound to the session.**
-   Pets listen on loopback TCP, not a unix socket (stock Windows Python has no
-   `AF_UNIX`, so the whole project uses one TCP code path — see
-   `src/hostinfo.py`). Check liveness with `hostinfo.pet_alive`, the same
-   handshake the hook uses (a bare connect can't tell a real pet from an
-   unrelated process that reused a stale port), and launch via a native path
-   with `setsid` where available so the pet gets its own process group and
-   outlives this tool call (falling back to `nohup` on git-bash, which has no
-   `setsid`):
-   ```bash
-   ALIVE=$("$PY" -c "import sys, os; sys.path.insert(0, os.path.expanduser('~/claude-pet/src')); import hostinfo; print('yes' if hostinfo.pet_alive('$SID') else 'no')")
-   LAUNCH=$("$PY" -c "import os; print(os.path.expanduser('~/claude-pet/bin/claude-pet'))")
-   if [ "$ALIVE" = "yes" ]; then
-       echo "already attached to this session 🐾"
-   else
-       if command -v setsid >/dev/null 2>&1; then
-           setsid "$PY" "$LAUNCH" --session "$SID" --host "$HOST" >/dev/null 2>&1 < /dev/null &
-       else
-           nohup "$PY" "$LAUNCH" --session "$SID" --host "$HOST" >/dev/null 2>&1 < /dev/null &
-       fi
-       disown 2>/dev/null || true
-       echo "attached to session $SID (host=$HOST) 🐾"
-   fi
-   ```
+`claude-pet-attach` finds this session (`$CLAUDE_CODE_SESSION_ID`, else the
+newest transcript under `~/.claude/projects/`), detects the host terminal/IDE
+so click-to-focus targets the right window, skips if a pet is already attached
+(the same liveness handshake the hook uses — a bare connect can't tell a live
+pet from a reused stale port), and launches a detached pet bound to the session.
+It prints `attached to session ...` or `already attached ...`.
 
 **Reactions require hooks.** The pet only reacts to this session if the
-claude-pet hooks are installed (`~/claude-pet/bin/claude-pet-install-hooks`) AND
-this session loaded them. If hooks were installed *after* this session started,
-restart the session (or the pet attaches but stays idle). New sessions
-auto-attach their own pet via the SessionStart hook, so `/claude-pet` is mainly
-for sessions that predate the install, or to bring a closed pet back.
+claude-pet hooks are installed (`claude-pet-install`) AND this session loaded
+them. If hooks were installed *after* this session started, restart the session
+(or the pet attaches but stays idle). New sessions auto-attach their own pet via
+the SessionStart hook, so `/claude-pet` is mainly for sessions that predate the
+install, or to bring a closed pet back.
 
-## `standalone` — an unattached roaming pet
+## Standalone
 
-If the user said "standalone" (or just wants a decorative pet that reacts to no
-particular session):
+An unattached, decorative pet that reacts to no particular session:
 ```bash
-PY=python3; "$PY" -c "" >/dev/null 2>&1 || PY=python
-LAUNCH=$("$PY" -c "import os; print(os.path.expanduser('~/claude-pet/bin/claude-pet'))")
-if command -v setsid >/dev/null 2>&1; then
-    setsid "$PY" "$LAUNCH" >/dev/null 2>&1 < /dev/null &
-else
-    nohup "$PY" "$LAUNCH" >/dev/null 2>&1 < /dev/null &
-fi
-disown 2>/dev/null || true
-echo "standalone pet running 🐾"
+cpet attach --standalone
 ```
+
+## Trigger a motion
+
+```bash
+cpet motion <arg>    # jump | wave | sing | juggle | float | celebrate | thinking | sleeping | error | attention | stop | list
+```
+e.g. `cpet motion jump`, `cpet motion float` (holds until `cpet motion stop`),
+`cpet motion list`. It broadcasts to every running pet and prints how many
+reacted; if it says `-> 0 pet(s)`, none is running — offer to attach one with
+`/claude-pet`.
+
+## Update
+
+Bring claude-pet up to date, then re-register the hooks/skill:
+```bash
+if [ -d "$HOME/claude-pet/.git" ]; then            # source checkout
+  git -C "$HOME/claude-pet" pull --ff-only && cpet install
+elif command -v pipx >/dev/null 2>&1; then          # pipx install
+  pipx upgrade claude-pet && cpet install
+else
+  echo "update with the same command you installed with (see the README)"
+fi
+```
+If `git pull` fails with local changes / divergence, report it (don't force).
+New code only takes effect on a **fresh** pet + session: close any running pet
+(right-click → 종료) and restart this Claude Code session (or run `/claude-pet`
+again) so the reinstalled hooks and new pet code load.
 
 ## Notes
 - Multiple pets are fine — each is independent. Stop one via right-click → 종료.
-- This skill never installs hooks or edits settings; it only launches a pet.
+- This skill only launches/updates a pet; `claude-pet-install` is what edits
+  settings/hooks.
