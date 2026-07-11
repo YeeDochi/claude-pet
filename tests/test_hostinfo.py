@@ -39,17 +39,28 @@ def test_host_classes():
     assert hostinfo.host_classes("unknown") == []
     assert hostinfo.host_classes("nonsense") == []
 
-def test_win_classes_vscode_uses_real_win32_class():
-    # VS Code's KWin class ("code") never appears in its Win32 class
-    # ("chrome_widgetwin_1"), so win_classes needs its own mapping.
-    assert hostinfo.win_classes("vscode") == ["chrome_widgetwin_1"]
+def test_win_classes_vscode_has_no_safe_win32_guess():
+    # VS Code's real Win32 class ("chrome_widgetwin_1") is shared by every
+    # other Electron/Chromium app (Discord, Slack, Teams, a browser, even a
+    # second unrelated VS Code window) -- guessing it risks click-to-focus
+    # raising the wrong window, so win_classes deliberately returns []
+    # (find_window_by_class then safely no-ops) rather than a false match.
+    assert hostinfo.win_classes("vscode") == []
 
-def test_win_classes_falls_back_to_generic_terminal_classes():
+def test_win_classes_unknown_falls_back_to_generic_terminal_classes():
     # cmd.exe/PowerShell/Windows Terminal all detect_host() as "unknown" (no
     # env-var signal), unlike Linux where "unknown" means "no guess at all".
+    # These two classes are distinctive enough (native terminal hosts only)
+    # to trust a blind substring match.
     assert hostinfo.win_classes("unknown") == [
         "cascadia_hosting_window_class", "consolewindowclass"]
-    assert hostinfo.win_classes("konsole") == hostinfo.win_classes("unknown")
+
+def test_win_classes_unmapped_host_gets_no_fallback():
+    # Any host without a Windows-safe class (e.g. "konsole", a Linux-only
+    # host that can never legitimately appear on Windows) gets no guess --
+    # only "unknown" gets the generic terminal fallback.
+    assert hostinfo.win_classes("konsole") == []
+    assert hostinfo.win_classes("nonsense") == []
 
 def test_session_port_file_path(monkeypatch):
     monkeypatch.setenv("XDG_RUNTIME_DIR", "/run/user/1000")
@@ -159,6 +170,32 @@ def test_pet_alive_false_for_foreign_listener(tmp_path, monkeypatch):
         assert hostinfo.pet_alive("sid") is False
     finally:
         srv.close()
+
+
+class _TimeoutSocket:
+    """A socket that accepts the connect but times out answering -- a busy
+    but LIVE pet. Must be treated differently from a refused connect: the
+    port file is the only record of where that live pet is, so it must
+    survive (mirrors bin/claude-pet-motion's send()'s refused-vs-timeout
+    distinction, tested in tests/test_motion_helper.py)."""
+    def settimeout(self, t): pass
+    def connect(self, addr): pass
+    def sendall(self, b): pass
+    def shutdown(self, how): pass
+    def recv(self, n): raise socket.timeout()
+    def close(self): pass
+
+
+def test_pet_alive_false_but_keeps_port_file_on_timeout(tmp_path, monkeypatch):
+    # a busy-but-alive pet must NOT have its port file deleted -- only a
+    # refused connect (nothing listening at all) proves it, per pet_alive's
+    # own docstring ("Any non-refused error... leaves the file alone").
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    hostinfo.write_session_port("sid", 54321)
+    path = hostinfo.session_port_file("sid")
+    monkeypatch.setattr(hostinfo.socket, "socket", lambda *a, **k: _TimeoutSocket())
+    assert hostinfo.pet_alive("sid") is False
+    assert os.path.exists(path)              # NOT removed (timeout != refused)
 
 
 class _RefusingSocket:

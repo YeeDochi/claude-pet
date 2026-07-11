@@ -1165,12 +1165,13 @@ class Pet(QWidget):
         if not target:
             # No pid-pinned host window (e.g. launched without --claude-pid):
             # fall back to matching a Win32 window class. self.host_classes is
-            # the Linux/KWin flavor (e.g. "code" for VS Code) which never
-            # matches a real Win32 class name (VS Code's is
-            # "chrome_widgetwin_1") — use hostinfo.win_classes instead, which
-            # also has a real fallback for native Windows terminals
-            # (cmd.exe/PowerShell/Windows Terminal all detect_host() as
-            # "unknown", unlike Linux where that meant "no guess available").
+            # the Linux/KWin flavor (e.g. "code" for VS Code), which never
+            # matches a real Win32 class name — use hostinfo.win_classes
+            # instead, which only guesses for hosts with a distinctive-enough
+            # class (native Windows terminals) and returns [] for anything
+            # else (e.g. "vscode", whose real class "chrome_widgetwin_1" is
+            # shared by every other Electron app) so find_window_by_class
+            # safely no-ops rather than raising the wrong window.
             target = geom.find_window_by_class(hostinfo.win_classes(self.host))
         if target:
             geom.activate_hwnd(target)

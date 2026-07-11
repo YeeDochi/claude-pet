@@ -40,23 +40,30 @@ MAC_APP = {
 
 # host -> Win32 window-class substrings, for the click-to-focus fallback when
 # no pid-pinned host window was found. Win32 class names are unrelated to the
-# KWin resourceClass / macOS app names above (e.g. VS Code's KWin class is
-# "code" but its Win32 class is "chrome_widgetwin_1", shared with every other
-# Electron/Chromium app), so this needs its own table rather than reusing
-# HOST_CLASSES. detect_host() has no env-var signal for native Windows
-# terminals (cmd.exe/PowerShell/Windows Terminal all come back "unknown"), so
-# "unknown" falls back to the generic Windows terminal-host classes instead of
-# an empty list.
+# KWin resourceClass / macOS app names above, so this needs its own table
+# rather than reusing HOST_CLASSES. Only hosts with a class distinctive
+# enough to trust a blind substring match against every top-level window on
+# the desktop are listed: native Windows terminals (Windows Terminal's
+# "cascadia_hosting_window_class", classic conhost's "consolewindowclass").
+# VS Code's real Win32 class is "chrome_widgetwin_1" — shared with every
+# other Electron/Chromium app (Discord, Slack, Teams, a plain Chrome/Edge
+# window, even a second unrelated VS Code window) — so it's deliberately
+# NOT listed here: guessing would risk click-to-focus raising the wrong
+# window entirely. detect_host() has no env-var signal for native Windows
+# terminals (cmd.exe/PowerShell/Windows Terminal all come back "unknown"),
+# so that's the one host that gets the generic terminal-class fallback; any
+# other/unmapped host gets no fallback classes and find_window_by_class
+# safely no-ops instead of guessing.
 WIN_CLASSES = {
-    "vscode": ["chrome_widgetwin_1"],
     "unknown": ["cascadia_hosting_window_class", "consolewindowclass"],
 }
 
 
 def win_classes(host):
-    """Win32 window-class substrings for a host (falls back to generic
-    Windows terminal classes for any host with no Windows-specific entry)."""
-    return WIN_CLASSES.get(host, WIN_CLASSES["unknown"])
+    """Win32 window-class substrings for a host's click-to-focus fallback, or
+    [] if no class for this host is distinctive enough to trust a blind
+    substring match (find_window_by_class then safely returns no match)."""
+    return WIN_CLASSES.get(host, [])
 
 
 def detect_host(env=None):

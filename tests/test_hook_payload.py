@@ -87,3 +87,41 @@ def test_session_start_sends_when_pet_confirmed_alive(tmp_path, monkeypatch):
     _run_main(monkeypatch, "live", True, launch_calls, sent)
     assert launch_calls == []
     assert len(sent) == 1
+
+
+class _RefusingSocket:
+    """Deterministic stand-in for a genuinely dead pet's port -- see
+    tests/test_hostinfo.py's identical fake for why this is used instead of
+    a real bind-then-close socket (Windows loopback refusal timing)."""
+    def settimeout(self, t): pass
+    def connect(self, addr): raise ConnectionRefusedError()
+    def close(self): pass
+
+
+def test_session_start_dead_pet_still_drops_this_event(tmp_path, monkeypatch):
+    # Documents a known, accepted limitation (not a regression): for a
+    # GENUINELY dead pet, the REAL hostinfo.pet_alive() unlinks the stale
+    # port file as a side effect of the refused connect. had_port was
+    # captured as True before that happened, so launched_fresh stays False
+    # and the hook still attempts the send below -- but read_session_port()
+    # now reads the just-deleted file and returns None. There's no live pet
+    # to deliver to at this instant regardless of how the flag is
+    # structured (the replacement pet hasn't started listening yet), so this
+    # one event is unavoidably dropped; the next hook event reaches the new
+    # pet fine. This test uses the real, side-effecting pet_alive (not a
+    # mock) so a future refactor that changes this ordering doesn't silently
+    # change behavior.
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    port_path = tmp_path / "claude-pet-dead.port"
+    port_path.write_text("54321")
+    monkeypatch.setattr(mod.hostinfo.socket, "socket", lambda *a, **k: _RefusingSocket())
+    launch_calls, sent = [], []
+    monkeypatch.setattr(mod, "_launch_pet", lambda *a, **k: launch_calls.append((a, k)))
+    monkeypatch.setattr(mod, "_send", lambda port, payload: sent.append((port, payload)))
+    monkeypatch.setattr(mod.sys, "argv", ["claude-pet-hook", "SessionStart"])
+    monkeypatch.setattr(mod.sys, "stdin", io.StringIO(json.dumps(
+        {"session_id": "dead", "hook_event_name": "SessionStart"})))
+    mod.main()
+    assert len(launch_calls) == 1          # replacement launch still attempted
+    assert not port_path.exists()          # stale file cleaned up by pet_alive
+    assert sent and sent[0][0] is None      # send attempted, but nothing to send to

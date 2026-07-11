@@ -62,9 +62,11 @@ def test_pid_alive_posix_and_windows(monkeypatch):
 def test_activate_claude_windows_fallback_uses_win32_classes():
     # With no pid-pinned host window, the Windows click-to-focus fallback must
     # use hostinfo.win_classes (real Win32 class names) rather than the
-    # Linux/KWin-flavored self.host_classes ("code" never matches VS Code's
-    # actual Win32 class "chrome_widgetwin_1").
-    p = P.Pet(session_id="wf1", host="vscode")
+    # Linux/KWin-flavored self.host_classes ("code" never matches any real
+    # Win32 class). "unknown" (native terminals: cmd.exe/PowerShell/Windows
+    # Terminal) is the one host with a distinctive-enough Win32 class to
+    # trust a fallback guess.
+    p = P.Pet(session_id="wf1", host="unknown")
     try:
         p._host_wid = None
 
@@ -82,9 +84,37 @@ def test_activate_claude_windows_fallback_uses_win32_classes():
         fake = _FakeGeom()
         p._win32_geom = fake
         p._activate_claude_windows()
-        assert fake.calls == [hostinfo.win_classes("vscode")]
-        assert fake.calls[0] == ["chrome_widgetwin_1"]
+        assert fake.calls == [hostinfo.win_classes("unknown")]
+        assert fake.calls[0] == ["cascadia_hosting_window_class", "consolewindowclass"]
         assert fake.activated == 42
+    finally:
+        p._cleanup()
+
+
+def test_activate_claude_windows_no_guess_for_ambiguous_host():
+    # VS Code's Win32 class ("chrome_widgetwin_1") is shared by every other
+    # Electron/Chromium app -- win_classes("vscode") is [] on purpose, and
+    # the fallback must pass that through rather than substituting a guess.
+    p = P.Pet(session_id="wf2", host="vscode")
+    try:
+        p._host_wid = None
+
+        class _FakeGeom:
+            def __init__(self):
+                self.calls = []
+
+            def find_window_by_class(self, classes):
+                self.calls.append(classes)
+                return None
+
+            def activate_hwnd(self, hwnd):
+                self.activated = hwnd
+
+        fake = _FakeGeom()
+        p._win32_geom = fake
+        p._activate_claude_windows()
+        assert fake.calls == [[]]
+        assert not hasattr(fake, "activated")
     finally:
         p._cleanup()
 
