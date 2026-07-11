@@ -34,7 +34,7 @@ Look at the argument the user passed after `/claudlet`:
 - `config` (or `설정`; optionally `config open` / `config init`) → **Configure**;
   do NOT launch a pet.
 - `update` (or `업데이트`) → **Update** (release channel). `update latest`
-  (or `edge` / `master`) → **Update** to the latest branch.
+  (or `edge` / `develop`) → **Update** to the latest `develop` branch.
 - `standalone` → **Standalone**.
 - nothing → **Attach** (default).
 
@@ -123,9 +123,10 @@ Schema (all keys optional; unknown keys / invalid values are dropped):
 
 ## Update
 
-Two channels: **release** (`/claudlet update`, the latest PyPI release — stable)
-and **latest** (`/claudlet update latest`, the tip of `master` — newest, may be
-rough). Default to release unless the user asked for `latest`/`edge`/`master`.
+Two channels: **release** (`/claudlet update`, the latest PyPI release — stable;
+`master` holds only released tags) and **latest** (`/claudlet update latest`, the
+tip of the `develop` branch — newest, may be rough). Default to release unless
+the user asked for `latest`/`edge`/`develop`.
 
 **Do NOT run the update yourself.** It changes the user's environment and must be
 followed by a session restart, so hand it to the user to run — and updating is
@@ -140,14 +141,14 @@ also the one thing that shouldn't happen silently mid-session. Steps:
 3. **Give the user a `!`-prefixed command to run themselves** (so it runs in
    their own shell with output visible), matching method + channel:
 
-   | | release | latest (`master`) |
+   | | release | latest (`develop`) |
    |---|---|---|
-   | **pipx** | `! pipx install --force claudlet && claudlet-install` | `! pipx install --force "git+https://github.com/YeeDochi/Claudlet@master" && claudlet-install` |
+   | **pipx** | `! pipx install --force claudlet && claudlet-install` | `! pipx install --force "git+https://github.com/YeeDochi/Claudlet@develop" && claudlet-install` |
    | **source checkout** | `! git -C ~/claudlet pull --ff-only && claudlet-install` | (same — a checkout already tracks its branch) |
 
    (Use `pipx install --force` for both pipx rows, NOT `pipx upgrade`: `upgrade`
    re-fetches from whatever source the user first installed from, so a user on
-   the git/`@master` install would get master again even when they pick
+   the git/`@develop` install would get develop again even when they pick
    *release*. `install --force claudlet` always pulls the PyPI release, so the
    two channels switch cleanly in both directions. The *latest* channel needs
    `git` on PATH; *release* does not — if git is missing, steer them to release.)

@@ -43,7 +43,7 @@ claudlet-install      # registers the hooks + /claudlet skill (idempotent)
 
 Check your version with `claudlet-version` (installed vs latest release). Update
 to the newest **release** with `pipx upgrade claudlet && claudlet-install`, or to
-the tip of **master** with `pipx install --force "git+https://github.com/YeeDochi/Claudlet@master" && claudlet-install`.
+the tip of **develop** (edge) with `pipx install --force "git+https://github.com/YeeDochi/Claudlet@develop" && claudlet-install`.
 Either way, restart your Claude Code session afterward (`claude --continue`) so the
 new hooks + pet code load. Or just run `/claudlet update` (release) /
 `/claudlet update latest` (master) from inside Claude Code and follow the prompts.
@@ -108,7 +108,7 @@ drive the pet straight from a prompt:
 - `/claudlet standalone` — an unattached, decorative pet
 - `/claudlet <motion>` — `jump` · `wave` · `sing` · `juggle` · `float` · `celebrate` · `thinking` · `sleeping` · `error` · `attention` (plus `list`, `stop`)
 - `/claudlet config` — show the config, or just ask in plain language ("jump when I run Bash") and Claude edits it for you
-- `/claudlet update` — update to the latest release (`update latest` for the tip of master); shows your version and walks you through it
+- `/claudlet update` — update to the latest release (`update latest` for the tip of develop); shows your version and walks you through it
 
 ## Docs
 
