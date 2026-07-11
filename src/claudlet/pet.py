@@ -130,6 +130,20 @@ class _GeomReceiver(QObject):
         self._pet._on_cursor(xy)
 
 
+def _macos_keep_visible(widget):
+    """macOS-only: stop this Qt.Tool window from being auto-hidden by AppKit
+    when the pet's app is deactivated (user clicks another window). No-op off
+    macOS or without pyobjc. Safe to call from any widget's showEvent — the
+    native NSView/NSWindow exists by then. See windows_macos for the why."""
+    if sys.platform != "darwin":
+        return
+    try:
+        from claudlet import windows_macos
+        windows_macos.keep_visible_on_deactivate(widget.winId())
+    except Exception:
+        pass
+
+
 class Companion(QWidget):
     """An independent little creature in its own window that loosely FOLLOWS the
     pet while a subagent runs. Eased motion (COMPANION_EASE) so it trails behind
@@ -267,6 +281,10 @@ class Companion(QWidget):
         self.frame = (self.frame + 1) % 100000
         self.move(int(self.x), int(self.y))
         self.update()
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        _macos_keep_visible(self)      # stop AppKit hiding it on app deactivate
 
     def paintEvent(self, _e):
         p = QPainter(self)
@@ -1229,6 +1247,10 @@ class Pet(QWidget):
                 return g.bottom()
         return self.screen_rect.bottom()
 
+    def showEvent(self, e):
+        super().showEvent(e)
+        _macos_keep_visible(self)      # stop AppKit hiding it on app deactivate
+
     # ---------- painting ----------
     def paintEvent(self, _e):
         p = QPainter(self)
@@ -1706,6 +1728,16 @@ def main():
     app.setApplicationName("claudlet")
     app.setDesktopFileName("claudlet")
     app.setQuitOnLastWindowClosed(False)
+    if sys.platform == "darwin":
+        # No Dock icon / Cmd-Tab entry: on macOS that's an activation-policy
+        # thing, not a window-flag thing, so Qt.Tool can't do it. Do it here,
+        # after NSApplication exists but before any window shows. See
+        # windows_macos.set_accessory_policy.
+        try:
+            from claudlet import windows_macos
+            windows_macos.set_accessory_policy()
+        except Exception:
+            pass                              # never block startup over cosmetics
     pet = Pet(session_id=args.session, host=args.host, claude_pid=args.claude_pid)
     pet._lock_fd = lock_fd                    # keep the fd (and the lock) alive
     # always tear down the KWin geom script — including on `kill`/SIGTERM, which

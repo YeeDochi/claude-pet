@@ -73,6 +73,23 @@ if sys.platform == "darwin":
     except Exception:
         Quartz = None
 
+# AppKit (Cocoa) is used only for the two window-behaviour fixes below
+# (Dock-icon suppression + stop-hiding-on-deactivate). It ships with
+# pyobjc-framework-Cocoa, which pyobjc-framework-Quartz already depends on, so
+# it's available wherever Quartz is. Guarded exactly like Quartz: absent -> the
+# fixes no-op and the pet just behaves as before (Dock icon shown, hides on
+# click-away). Kept SEPARATE from Quartz so a partial pyobjc install can still
+# use whichever half imported.
+AppKit = None
+objc = None
+if sys.platform == "darwin":
+    try:
+        import AppKit             # pip install pyobjc-framework-Cocoa (via Quartz)
+        import objc
+    except Exception:
+        AppKit = None
+        objc = None
+
 # CGWindow info-dictionary keys, as plain strings. The Quartz constants
 # (Quartz.kCGWindowNumber etc.) are CFStrings documented to bridge to exactly
 # these values, and using literals keeps the row-parsing logic below pure and
@@ -91,6 +108,65 @@ K_ALPHA = "kCGWindowAlpha"
 def available():
     """True when the Quartz backend can actually be used (macOS + pyobjc)."""
     return Quartz is not None
+
+
+def set_accessory_policy():
+    """Make the pet an 'accessory' (agent) app so it shows NO Dock icon and NO
+    Cmd-Tab app-switcher entry — the macOS equivalent of Qt.Tool's skip-taskbar
+    on Windows/Linux.
+
+    Why this is needed at all: on macOS the Dock icon is governed by the app's
+    *activation policy* (the Info.plist LSUIElement key, or this runtime call),
+    NOT by any window flag. So Qt.WindowType.Tool — which DOES remove the
+    taskbar button on Windows and the task entry on Linux — leaves the default
+    NSApplicationActivationPolicyRegular in place on macOS, and the launching
+    Python shows its rocket/interpreter icon in the Dock. Switching to
+    ...PolicyAccessory removes it.
+
+    Best-effort: returns True if applied, False if AppKit is missing or the call
+    raised (same degrade-don't-crash contract as the rest of this module). Call
+    once, after QApplication (hence NSApplication.sharedApplication) exists and
+    BEFORE the first window is shown, so no icon ever flashes in the Dock.
+    """
+    if AppKit is None:
+        return False
+    try:
+        app = AppKit.NSApplication.sharedApplication()
+        # NSApplicationActivationPolicyAccessory == 1; use the named constant
+        # when present, fall back to the documented literal.
+        policy = getattr(AppKit, "NSApplicationActivationPolicyAccessory", 1)
+        app.setActivationPolicy_(policy)
+        return True
+    except Exception:
+        return False
+
+
+def keep_visible_on_deactivate(win_id):
+    """Stop a Qt.Tool window from vanishing when the user clicks another app.
+
+    Qt.WindowType.Tool maps to an NSPanel utility window on macOS, and such a
+    panel's `hidesOnDeactivate` defaults to YES — so the moment our app is
+    deactivated (the user clicks any other window) AppKit auto-hides the panel
+    and the creature blinks out of existence. Linux/Windows have no
+    "hide on app deactivate" concept, so the bug is macOS-only. Turning
+    hidesOnDeactivate off keeps the pet on screen across the whole desktop
+    regardless of which app is frontmost.
+
+    `win_id` is QWidget.winId() — on macOS an NSView* address. The native window
+    must already exist, so call this from the widget's showEvent (or any time
+    after show()). Best-effort; no-op / False without pyobjc or on any error.
+    """
+    if AppKit is None or objc is None:
+        return False
+    try:
+        view = objc.objc_object(c_void_p=int(win_id))   # NSView*
+        nswindow = view.window()
+        if nswindow is None:
+            return False
+        nswindow.setHidesOnDeactivate_(False)
+        return True
+    except Exception:
+        return False
 
 
 def _clean_class(name):
