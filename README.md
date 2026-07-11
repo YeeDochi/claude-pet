@@ -30,7 +30,10 @@ When Claude spawns **subagents**, a little hard-hatted sidekick trails your pet
 for each one — a duckling chain that follows it around, mirrors what the
 subagent is doing, and waves goodbye when its agent finishes.
 
-![Agent companions trailing the pet](docs/companion.gif)
+![Agent companions on the desktop](docs/companion_demo.gif)
+*Real desktop capture — two subagents, two hatted companions trailing the session's pet.*
+
+![Agent companions strolling](docs/companion.gif)
 
 Each companion wears a random hat so you can tell them apart:
 
