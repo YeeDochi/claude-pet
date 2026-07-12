@@ -790,3 +790,24 @@ def test_companion_spawns_without_overlapping_pet():
         assert not overlap, "companion spawned overlapping the pet body"
     finally:
         p._cleanup()
+
+
+def test_companion_window_flags_match_pet_zorder_off_x11():
+    # Windows/macOS: BypassWindowManagerHint is an X11 concept and gives no
+    # always-on-top behaviour, so the companion sank behind windows while the
+    # pet (WindowStaysOnTopHint) stayed in front. Off X11 it must use
+    # StaysOnTop too, matching the pet's z-order.
+    from PyQt6.QtCore import Qt
+    for plat in ("win32", "darwin"):
+        f = P._companion_flags(plat)
+        assert f & Qt.WindowType.WindowStaysOnTopHint, plat
+        assert not (f & Qt.WindowType.BypassWindowManagerHint), plat
+
+
+def test_companion_window_flags_keep_bypass_on_x11():
+    # Linux/X11 keeps override-redirect: a second managed on-top window fights
+    # the pet's interactive drag (jitter). Must NOT regress to StaysOnTop.
+    from PyQt6.QtCore import Qt
+    f = P._companion_flags("linux")
+    assert f & Qt.WindowType.BypassWindowManagerHint
+    assert not (f & Qt.WindowType.WindowStaysOnTopHint)

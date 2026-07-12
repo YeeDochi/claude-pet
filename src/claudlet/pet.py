@@ -144,6 +144,22 @@ def _macos_keep_visible(widget):
         pass
 
 
+def _companion_flags(platform):
+    """Window flags for the agent companion (pure, so it's unit-tested).
+
+    It should sit at the same on-top z-order as the pet. On X11/Linux, though, a
+    second *managed* always-on-top window fights the pet's interactive-move
+    (drag) — that fight made the dragged pet jitter — so there we use
+    BypassWindowManagerHint (override-redirect, WM leaves it alone) and position
+    it by hand. BypassWindowManagerHint is X11-only: on Windows/macOS it gives no
+    on-top behaviour at all, so the companion sank BEHIND windows while the pet
+    (WindowStaysOnTopHint) stayed in front. Off X11, use StaysOnTop to match."""
+    base = Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool
+    if platform.startswith("linux"):
+        return base | Qt.WindowType.BypassWindowManagerHint
+    return base | Qt.WindowType.WindowStaysOnTopHint
+
+
 class Companion(QWidget):
     """An independent little creature in its own window that loosely FOLLOWS the
     pet while a subagent runs. Eased motion (COMPANION_EASE) so it trails behind
@@ -152,15 +168,7 @@ class Companion(QWidget):
 
     def __init__(self):
         super().__init__()
-        # BypassWindowManagerHint = X11 override-redirect: the WM doesn't manage,
-        # stack, or focus this window at all, so it can't fight the pet's
-        # interactive-move (drag) the way a second managed always-on-top window
-        # did — that fight made the dragged pet jitter. We position it by hand.
-        self.setWindowFlags(
-            Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.BypassWindowManagerHint
-            | Qt.WindowType.Tool
-        )
+        self.setWindowFlags(_companion_flags(sys.platform))
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         # purely decorative: never take clicks/focus.
