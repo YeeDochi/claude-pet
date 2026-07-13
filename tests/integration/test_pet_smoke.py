@@ -229,7 +229,7 @@ def test_companion_waves_goodbye_then_closes(monkeypatch):
 def test_companion_flung_inside_window_stays_inside(monkeypatch):
     # flung while the pet lives in a window: the companion bounces within that
     # window's interior instead of sailing out to the screen edges.
-    from claudlet import windows as W
+    from claudlet.platform import geom as W
     p = P.Pet(session_id="cmpbounce")
     try:
         monkeypatch.setattr(p.engine, "agents_active", lambda: 1)
@@ -285,10 +285,10 @@ def test_pid_alive_posix_and_windows(monkeypatch):
     # Windows branch: liveness comes from a process snapshot, never os.kill
     # (which on Windows would Ctrl+C the target instead of probing it).
     monkeypatch.setattr(P.os, "name", "nt")
-    import claudlet
-    fake = types.ModuleType("windows_win32")
+    import claudlet.platform.geom as geom_pkg
+    fake = types.ModuleType("win32")
     fake.proc_table = lambda: {4321: ("claude.exe", 1)}
-    monkeypatch.setattr(claudlet, "windows_win32", fake, raising=False)
+    monkeypatch.setattr(geom_pkg, "win32", fake, raising=False)
     assert P._pid_alive(4321) is True
     assert P._pid_alive(9999) is False               # absent from snapshot -> dead
     fake.proc_table = lambda: {}                      # snapshot failed -> assume alive
@@ -375,7 +375,7 @@ def test_sessionend_quit_is_cancelled_by_later_event():
 
 
 def test_visibility_hides_with_ridden_window():
-    from claudlet import windows as W
+    from claudlet.platform import geom as W
     p = P.Pet(session_id="hv")
     try:
         p._geom_active = True                      # pretend a geometry feed is active
@@ -400,7 +400,7 @@ def test_visibility_hides_with_ridden_window():
 
 
 def test_visibility_partial_cover_masks():
-    from claudlet import windows as W
+    from claudlet.platform import geom as W
     p = P.Pet(session_id="hvp")
     try:
         p._geom_active = True
@@ -422,7 +422,7 @@ def test_visibility_partial_cover_masks():
 
 
 def test_visibility_perched_on_top_not_clipped_by_its_window():
-    from claudlet import windows as W
+    from claudlet.platform import geom as W
     p = P.Pet(session_id="hvt")
     try:
         p._geom_active = True
@@ -444,7 +444,7 @@ def test_visibility_perched_on_top_not_clipped_by_its_window():
 
 
 def test_visibility_desktop_never_hides():
-    from claudlet import windows as W
+    from claudlet.platform import geom as W
     p = P.Pet(session_id="hv2")
     try:
         p._geom_active = True
@@ -458,7 +458,7 @@ def test_visibility_desktop_never_hides():
 
 
 def test_visibility_off_without_feed():
-    from claudlet import windows as W
+    from claudlet.platform import geom as W
     p = P.Pet(session_id="hv3")
     try:
         p._geom_active = False                     # no geometry feed
@@ -471,7 +471,7 @@ def test_visibility_off_without_feed():
 
 
 def test_bounds_desktop_vs_contained():
-    from claudlet import windows as W
+    from claudlet.platform import geom as W
     p = P.Pet(session_id="pb")
     try:
         # desktop: with no polled windows, floor is the screen floor
@@ -593,7 +593,7 @@ def test_follow_toggle_and_tick_glides_toward_cursor():
 
 
 def test_small_window_centres_pet_instead_of_jutting():
-    from claudlet import windows as W
+    from claudlet.platform import geom as W
     p = P.Pet(session_id="sm")
     try:
         # window narrower AND shorter than the pet -> centre, don't clamp to a corner
@@ -683,7 +683,7 @@ def test_floating_follow_tracks_x_and_y():
 
 
 def test_fling_inside_window_bounces_within_it():
-    from claudlet import windows as W
+    from claudlet.platform import geom as W
     p = P.Pet(session_id="m8")
     try:
         p._wins = [W.Win("0x1", 0, 0, 4000, 2000, "X")]   # window under the pet
@@ -701,7 +701,7 @@ def test_fling_inside_window_bounces_within_it():
 
 
 def test_gentle_drop_on_window_perches():
-    from claudlet import windows as W
+    from claudlet.platform import geom as W
     p = P.Pet(session_id="m9")
     try:
         p._wins = [W.Win("0x1", 0, 0, 4000, 2000, "X")]
@@ -719,7 +719,7 @@ def test_gentle_drop_on_window_perches():
 
 
 def test_drag_centre_out_of_window_leaves_it():
-    from claudlet import windows as W
+    from claudlet.platform import geom as W
     p = P.Pet(session_id="m10")
     try:
         p._contain = W.Win("0x1", 0, 0, 100, 100, "X")   # was living in a window

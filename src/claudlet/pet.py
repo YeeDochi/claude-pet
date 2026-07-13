@@ -41,7 +41,7 @@ from claudlet.platform import konsole
 from claudlet.core import hostinfo
 from claudlet.core import petconfig
 from claudlet.core import physics
-from claudlet import windows
+from claudlet.platform import geom
 
 # ---- config ----
 U = 5                                   # art-pixel size in device px
@@ -134,16 +134,16 @@ class _GeomReceiver(QObject):
 def _macos_keep_visible(widget):
     """macOS-only: keep this Qt.Tool window on screen. Two AppKit fixes, both
     no-ops off macOS or without pyobjc, both safe from any widget's showEvent
-    (the native NSView/NSWindow exists by then — see windows_macos for the why):
+    (the native NSView/NSWindow exists by then — see geom/macos.py for the why):
       - stop AppKit auto-hiding it when the pet's app is deactivated (user clicks
         another window);
       - stop the Show-Desktop / Mission Control gesture sweeping it off-screen."""
     if sys.platform != "darwin":
         return
     try:
-        from claudlet import windows_macos
-        windows_macos.keep_visible_on_deactivate(widget.winId())
-        windows_macos.keep_stationary_on_desktop(widget.winId())
+        from claudlet.platform.geom import macos
+        macos.keep_visible_on_deactivate(widget.winId())
+        macos.keep_stationary_on_desktop(widget.winId())
     except Exception:
         pass
 
@@ -310,7 +310,7 @@ class Companion(QWidget):
 class Pet(QWidget):
     def __init__(self, session_id="default", host="unknown", claude_pid=0):
         super().__init__()
-        # The KWin geom feed and windows.EXCLUDE_CLASSES filter our own windows
+        # The KWin geom feed and geom.EXCLUDE_CLASSES filter our own windows
         # out by resourceClass "claudlet", which Qt derives from the application
         # name — main() sets it, but a Pet constructed directly (demo/embedding)
         # would otherwise see ITSELF and its companion as perchable windows and
@@ -866,7 +866,7 @@ class Pet(QWidget):
         persistent KWin script that pushes on change. Windows: no equivalent
         push API, so poll Win32's window list on a timer instead. macOS: same
         polled shape via Quartz (SPECULATIVE, unverified on real hardware —
-        see windows_macos.py). Either way, any failure -> feature just off
+        see geom/macos.py). Either way, any failure -> feature just off
         (self._wins stays empty, pre-perch behaviour). self._geom_active is
         the generic (backend-agnostic) flag; self._dbus_name stays
         KDE-specific, used only by the KDE code paths."""
@@ -897,10 +897,10 @@ class Pet(QWidget):
 
     def _setup_geom_feed_win32(self):
         try:
-            from claudlet import windows_win32
+            from claudlet.platform.geom import win32
         except Exception:
             return
-        self._win32_geom = windows_win32
+        self._win32_geom = win32
         self._win32_timer = QTimer(self)
         self._win32_timer.timeout.connect(self._poll_win32_geom)
         self._win32_timer.start(220)   # measured ~0.4ms/poll; plenty of headroom
@@ -919,15 +919,15 @@ class Pet(QWidget):
         the Win32 one (no usable push-on-change API there either).
 
         SPECULATIVE — written without macOS hardware, never executed on a Mac;
-        see windows_macos.py's module docstring for the assumptions to verify
+        see geom/macos.py's module docstring for the assumptions to verify
         (Screen Recording permission, coordinate space, z-order)."""
         try:
-            from claudlet import windows_macos
+            from claudlet.platform.geom import macos
         except Exception:
             return
-        if not windows_macos.available():       # not macOS, or pyobjc missing
+        if not macos.available():       # not macOS, or pyobjc missing
             return
-        self._windows_macos = windows_macos
+        self._windows_macos = macos
         self._macos_timer = QTimer(self)
         self._macos_timer.timeout.connect(self._poll_windows_macos)
         # 220ms copied from the Win32 branch — an arbitrary guess here, pending
@@ -939,7 +939,7 @@ class Pet(QWidget):
 
     def _poll_windows_macos(self):
         # exclude by pid, not window id: Qt's winId() on macOS is an NSView
-        # pointer, not a CGWindowID — see windows_macos.py's docstring.
+        # pointer, not a CGWindowID — see geom/macos.py's docstring.
         try:
             # ref = our own window as Qt knows it (logical points). dump() finds
             # that same window in CoreGraphics and self-calibrates the CG->Qt
@@ -1001,7 +1001,7 @@ class Pet(QWidget):
             '  }catch(e){}'
             '  return true;}'                             # unknown API -> don't filter
             'function _dump(top){'
-            # stackingOrder is bottom->top, so windows.window_at's "last match
+            # stackingOrder is bottom->top, so geom.window_at's "last match
             # wins" correctly picks the TOPMOST window under the pet.
             '  var ws=(typeof workspace.stackingOrder!=="undefined"&&workspace.stackingOrder)'
             '    ?workspace.stackingOrder'
@@ -1119,14 +1119,14 @@ class Pet(QWidget):
             return set()
         if os.name == "nt":
             try:
-                from claudlet import windows_win32
-                return windows_win32.proc_ancestors(cur, max_hops)
+                from claudlet.platform.geom import win32
+                return win32.proc_ancestors(cur, max_hops)
             except Exception:
                 return set()
         if sys.platform == "darwin":
             try:
-                from claudlet import windows_macos
-                return windows_macos.proc_ancestors(cur, max_hops)
+                from claudlet.platform.geom import macos
+                return macos.proc_ancestors(cur, max_hops)
             except Exception:
                 return set()
         acc = set()
@@ -1145,7 +1145,7 @@ class Pet(QWidget):
         """Remember this session's host window (matched by pid) for click-to-focus.
         Independent of visibility — focus targets the console/IDE, not the perch."""
         if self._ancestor_pids:
-            h = windows.find_host(self._wins, self._ancestor_pids)
+            h = geom.find_host(self._wins, self._ancestor_pids)
             if h is not None:
                 self._host_wid = h.wid
 
@@ -1166,7 +1166,7 @@ class Pet(QWidget):
         else:
             cx = self.x + self.w / 2.0
             feet = self.y + FOOT_Y
-            cur = windows.window_under_feet(cx, feet, self._wins)
+            cur = geom.window_under_feet(cx, feet, self._wins)
             if cur is None:              # on the desktop -> always visible
                 self._show_full()
                 return
@@ -1215,7 +1215,7 @@ class Pet(QWidget):
         if dump == getattr(self, "_last_dump", None):
             return                       # coalesce identical pushes (cheap anti-spam)
         self._last_dump = dump
-        self._wins = windows.parse_kwin_dump(dump)
+        self._wins = geom.parse_dump(dump)
         self._update_host_wid()
         if self._contain is not None:
             prev = self._contain
@@ -1256,7 +1256,7 @@ class Pet(QWidget):
         cx = self.x + self.w / 2.0
         feet = self.y + FOOT_Y
         screen_bottom = self._screen_bottom_at(cx)
-        surface = windows.support_surface_under(cx, self._wins, screen_bottom, feet)
+        surface = geom.support_surface_under(cx, self._wins, screen_bottom, feet)
         if surface >= screen_bottom:
             floor = surface - self.h        # screen floor: keep window fully on-screen
         else:
@@ -1341,7 +1341,7 @@ class Pet(QWidget):
                 vy = (p1.y() - p0.y()) / dt / FPS
             cxp = int(self.x + self.w / 2)
             cyp = int(self.y + self.h / 2)
-            win = windows.window_at(cxp, cyp, self._wins)
+            win = geom.window_at(cxp, cyp, self._wins)
             fling = (vx * vx + vy * vy) ** 0.5 >= 8.0
             if win is not None:
                 # inside a window: a fling bounces around its interior walls,
@@ -1726,8 +1726,8 @@ def _pid_alive(pid):
     reaper never kills the pet on a merely-undetectable parent."""
     if os.name == "nt":
         try:
-            from claudlet import windows_win32
-            table = windows_win32.proc_table()
+            from claudlet.platform.geom import win32
+            table = win32.proc_table()
             return (not table) or (pid in table)
         except Exception:
             return True
@@ -1780,10 +1780,10 @@ def main():
         # No Dock icon / Cmd-Tab entry: on macOS that's an activation-policy
         # thing, not a window-flag thing, so Qt.Tool can't do it. Do it here,
         # after NSApplication exists but before any window shows. See
-        # windows_macos.set_accessory_policy.
+        # geom/macos.py's set_accessory_policy.
         try:
-            from claudlet import windows_macos
-            windows_macos.set_accessory_policy()
+            from claudlet.platform.geom import macos
+            macos.set_accessory_policy()
         except Exception:
             pass                              # never block startup over cosmetics
     pet = Pet(session_id=args.session, host=args.host, claude_pid=args.claude_pid)

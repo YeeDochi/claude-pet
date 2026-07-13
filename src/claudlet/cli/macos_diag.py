@@ -13,7 +13,7 @@ any state; the pet does NOT need to be running.
 Prints:
   1. every on-screen window Quartz reports (raw, unfiltered) — number, owner,
      pid, layer, alpha, RAW bounds;
-  2. the FILTERED feed the pet actually uses (windows_macos.dump -> parse);
+  2. the FILTERED feed the pet actually uses (macos.dump -> parse);
   3. each Qt screen's geometry + devicePixelRatio;
   4. a verdict hint: does a full-screen-ish window's width match the screen in
      points, or is it ~dpr x bigger (-> the Windows-style /devicePixelRatio fix)?
@@ -64,14 +64,14 @@ def main():
         print("  (none / Quartz unavailable)")
 
     # 2. the filtered feed the pet actually consumes ---------------------
-    print("\n--- 2. FILTERED feed (windows_macos.dump -> windows.parse_kwin_dump) ---")
+    print("\n--- 2. FILTERED feed (macos.dump -> geom.parse_dump) ---")
     try:
-        from claudlet import windows_macos
-        from claudlet import windows
-        print("  windows_macos.available():", windows_macos.available())
-        dump = windows_macos.dump(exclude_pid=os.getpid())
+        from claudlet.platform.geom import macos
+        from claudlet.platform import geom
+        print("  macos.available():", macos.available())
+        dump = macos.dump(exclude_pid=os.getpid())
         print("  raw dump string:", repr(dump))
-        for wn in windows.parse_kwin_dump(dump):
+        for wn in geom.parse_dump(dump):
             print("  win %-9s cls=%-22s %d,%d  %dx%d  top=%d pid=%s"
                   % (wn.wid, wn.title, wn.x, wn.y, wn.w, wn.h, wn.y, wn.pid))
     except Exception as e:
@@ -105,7 +105,7 @@ def main():
               "ratio=%.2f" % (scr_w, dpr, widest, ratio))
         if dpr > 1.05 and abs(ratio - dpr) < 0.25:
             print("  => Quartz appears to report PIXELS while Qt uses POINTS:")
-            print("     fix = Windows-style / devicePixelRatio in windows_macos (like _to_logical).")
+            print("     fix = Windows-style / devicePixelRatio in geom/macos.py (like _to_logical).")
         elif 0.75 <= ratio <= 1.25:
             print("  => Quartz widths already ~match Qt points (no /dpr needed).")
             print("     If perch still fails it's a y-offset (menu bar?) or the 6px tolerance.")

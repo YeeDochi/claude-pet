@@ -116,8 +116,8 @@ def _proc_info(pid):
         global _win32_proc_table
         if _win32_proc_table is None:
             try:
-                from claudlet import windows_win32
-                _win32_proc_table = windows_win32.proc_table()
+                from claudlet.platform.geom import win32
+                _win32_proc_table = win32.proc_table()
             except Exception:
                 _win32_proc_table = {}
         return _win32_proc_table.get(pid)

@@ -22,8 +22,9 @@ EXCLUDE_CLASSES = {"plasmashell", "xwaylandvideobridge", "claudlet", "",
                    "progman", "workerw"}
 
 
-def parse_kwin_dump(text, min_size=40):
-    """Parse the geometry feed pushed by our KWin script.
+def parse_dump(text, min_size=40):
+    """Parse a pipe-delimited window geometry feed (shared wire format used by
+    the KWin script and other backends).
 
     Format: `id;class;x,y,w,h|id;class;x,y,w,h|...`  (coords may be floats).
     Filters shell chrome and sub-min_size junk. Pure."""

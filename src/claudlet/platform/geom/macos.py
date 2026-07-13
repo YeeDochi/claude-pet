@@ -1,6 +1,6 @@
 """Read other windows' geometry on macOS (Quartz window services) so the pet
 can perch on and be contained by them — the macOS equivalent of the KWin/D-Bus
-feed and of `windows_win32.py`.
+feed and of `win32.py`.
 
 *** VERIFIED ON HARDWARE (since v1.0.0) ***********************************
 This module runs on real macOS: perch, occlusion, and click-to-focus were
@@ -18,7 +18,7 @@ Like Win32 (and unlike KWin scripting), Quartz has no practical
 push-on-change API for "some window moved" that we could use from an
 unprivileged Python process, so `pet.py` polls `dump()` on a QTimer.
 
-Produces the same wire format the KWin feed uses (`windows.parse_kwin_dump`),
+Produces the same wire format the KWin feed uses (`geom.parse_dump`),
 so it plugs into the existing, already-tested perch/contain pipeline
 unchanged: `id;class;x,y,w,h;pid|id;class;x,y,w,h;pid|...`, bottom-to-top.
 
@@ -66,7 +66,7 @@ import sys
 # Guarded import: this module must be importable everywhere. On non-macOS
 # (and on macOS without pyobjc-framework-Quartz installed) `Quartz` stays
 # None and every entry point no-ops — same defensive shape as
-# `windows_win32.user32 is None`. pyobjc is deliberately used instead of raw
+# `win32.user32 is None`. pyobjc is deliberately used instead of raw
 # ctypes CoreFoundation marshalling: CF ref-counting mistakes in unverified
 # ctypes code would crash, while a wrong pyobjc call just returns odd data.
 Quartz = None
@@ -249,7 +249,7 @@ def _row_from_info(info, exclude_pid=None):
         wid = int(wid) if wid is not None else 0
         # Class field: owner APP name first (permission-free; class-like, cf.
         # module docstring), window title only as a fallback. Both missing ->
-        # "" and parse_kwin_dump's EXCLUDE_CLASSES drops the row.
+        # "" and parse_dump's EXCLUDE_CLASSES drops the row.
         cls = _clean_class(info.get(K_OWNER_NAME) or info.get(K_NAME) or "")
         return (wid, cls, x, y, w, h, pid)
     except Exception:
@@ -258,7 +258,7 @@ def _row_from_info(info, exclude_pid=None):
 
 def _format_dump(rows):
     """Rows (topmost-first, as _enum_windows yields) -> wire-format string
-    (bottom-to-top, as `windows.parse_kwin_dump` expects). Pure."""
+    (bottom-to-top, as `geom.parse_dump` expects). Pure."""
     return "|".join(
         "{};{};{},{},{},{};{}".format(wid, cls, x, y, w, h, pid)
         for wid, cls, x, y, w, h, pid in reversed(rows)

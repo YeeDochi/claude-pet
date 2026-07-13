@@ -7,7 +7,7 @@ polled on a timer instead of pushed. EnumWindows already returns windows in
 current, correct Z-order every call, so (unlike the KWin feed) no
 just-activated-window workaround is needed here.
 
-Produces the same wire format the KWin feed uses (`windows.parse_kwin_dump`),
+Produces the same wire format the KWin feed uses (`geom.parse_dump`),
 so it plugs into the existing, already-tested perch/contain pipeline
 unchanged: `id;class;x,y,w,h;pid|id;class;x,y,w,h;pid|...`, bottom-to-top.
 """
@@ -341,14 +341,14 @@ def find_window_by_class(substrings):
 def find_focus_target(ancestor_pids, class_subs):
     """hwnd of this session's host window for click-to-focus, or None. Enumerates
     INCLUDING minimized windows (so a minimized host can be restored) and lets
-    windows.pick_focus_target choose: pid-ancestor match (skipping shell chrome)
+    geom.pick_focus_target choose: pid-ancestor match (skipping shell chrome)
     first, then a native-terminal class-substring fallback."""
     if user32 is None:
         return None
-    from claudlet import windows as _w
-    wins = [_w.Win(hwnd, x, y, w, h, cls, pid)
+    from claudlet.platform import geom as _g
+    wins = [_g.Win(hwnd, x, y, w, h, cls, pid)
             for (hwnd, cls, x, y, w, h, pid) in _enum_windows(include_iconic=True)]
-    return _w.pick_focus_target(wins, ancestor_pids, class_subs)
+    return _g.pick_focus_target(wins, ancestor_pids, class_subs)
 
 
 def activate_hwnd(hwnd):
