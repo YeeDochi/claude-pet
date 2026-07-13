@@ -1,2 +1,2 @@
 #!/usr/bin/env python3
-import _shim; _shim.run("claudlet.motion:main")
+import _shim; _shim.run("claudlet.motion:_cli")

@@ -1,2 +1,2 @@
 #!/usr/bin/env python3
-import _shim; _shim.run("claudlet.attach:main")
+import _shim; _shim.run("claudlet.attach:_cli")
