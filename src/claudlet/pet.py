@@ -1076,7 +1076,7 @@ class Pet(QWidget):
             '    if(Math.abs(p.x-_cx)+Math.abs(p.y-_cy)>=3){_cx=p.x;_cy=p.y;'
             '      callDBus(SVC,"/","","cursor",p.x+","+p.y);}});'
         )
-        self._cursor_plugin = "claudepet_cursor_" + re.sub(
+        self._cursor_plugin = "claudlet_cursor_" + re.sub(
             r"[^A-Za-z0-9_]", "_", str(self.session_id))
         try:
             subprocess.run(["qdbus6", "org.kde.KWin", "/Scripting",
@@ -1529,7 +1529,7 @@ class Pet(QWidget):
         next call (and _cleanup) unloads the previous one instead of leaving a
         stopped-but-registered script behind on every click-to-focus. Best-effort;
         never raises."""
-        plugin = "claudepet_act_" + re.sub(r"[^A-Za-z0-9_]", "_", str(self.session_id))
+        plugin = "claudlet_act_" + re.sub(r"[^A-Za-z0-9_]", "_", str(self.session_id))
         try:
             subprocess.run(["qdbus6", "org.kde.KWin", "/Scripting",
                             "org.kde.kwin.Scripting.unloadScript", plugin],
