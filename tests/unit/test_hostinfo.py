@@ -1,5 +1,5 @@
 import os, socket, threading
-from claudlet import hostinfo
+from claudlet.core import hostinfo
 
 
 def test_detect_vscode_by_term_program():

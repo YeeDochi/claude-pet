@@ -34,13 +34,13 @@ try:
 except ImportError:                            # not built on some macOS/Windows Qt
     QDBusConnection = None
 
-from claudlet import creature as C
-from claudlet.state_engine import StateEngine, AUTO_ROAM, AUTO_STATES
+from claudlet.core import creature as C
+from claudlet.core.state_engine import StateEngine, AUTO_ROAM, AUTO_STATES
 from claudlet import focus
 from claudlet import konsole
-from claudlet import hostinfo
-from claudlet import petconfig
-from claudlet import physics
+from claudlet.core import hostinfo
+from claudlet.core import petconfig
+from claudlet.core import physics
 from claudlet import windows
 
 # ---- config ----

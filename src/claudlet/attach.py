@@ -16,7 +16,7 @@ import os
 import subprocess
 import sys
 
-from claudlet import hostinfo
+from claudlet.core import hostinfo
 
 
 def _newest_session_id():

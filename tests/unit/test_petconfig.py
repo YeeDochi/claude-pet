@@ -1,6 +1,6 @@
 import os, json, tempfile
 
-from claudlet import petconfig
+from claudlet.core import petconfig
 
 
 def _write(tmp, obj):

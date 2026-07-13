@@ -160,7 +160,7 @@ def _resolved_lang():
     """User's effective language ("ko"/"en"). Reads config, falling back to the
     OS locale via resolve_lang; "en" if anything goes wrong (never fails setup)."""
     try:
-        from claudlet import petconfig
+        from claudlet.core import petconfig
         return petconfig.resolve_lang(petconfig.load_config().get("lang", "auto"))
     except Exception:
         return "en"

@@ -3,7 +3,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt, QPoint
 from claudlet import pet as P
-from claudlet import hostinfo
+from claudlet.core import hostinfo
 
 _app = QApplication.instance() or QApplication(sys.argv)
 
@@ -782,7 +782,7 @@ def test_companion_survives_backgrounded_subagent_lifecycle():
 
         # ...then, once the grace has passed (backdate the timer rather than
         # sleep), it departs with the goodbye wave.
-        from claudlet import state_engine as SE
+        from claudlet.core import state_engine as SE
         p.engine.sessions["bg"].agent_gone_since = (
             time.monotonic() - SE.COMPANION_DEPART_GRACE - 1.0)
         p._tick()

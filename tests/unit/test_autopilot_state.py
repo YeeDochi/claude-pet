@@ -1,4 +1,4 @@
-from claudlet.state_engine import StateEngine
+from claudlet.core.state_engine import StateEngine
 
 
 def _pre(tool, pm=None):

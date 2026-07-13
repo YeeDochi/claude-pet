@@ -15,8 +15,8 @@ import json
 import os
 import sys
 
-from claudlet import petconfig
-from claudlet.state_engine import MAPPABLE_STATES, DEFAULT_EVENT_STATES
+from claudlet.core import petconfig
+from claudlet.core.state_engine import MAPPABLE_STATES, DEFAULT_EVENT_STATES
 
 
 def diagnose(raw):

@@ -16,7 +16,7 @@ import shutil
 import sys
 
 from claudlet import motion
-from claudlet import petconfig
+from claudlet.core import petconfig
 from claudlet import install
 from claudlet import install_hooks
 

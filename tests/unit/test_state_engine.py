@@ -1,4 +1,4 @@
-from claudlet.state_engine import tool_to_state, StateEngine
+from claudlet.core.state_engine import tool_to_state, StateEngine
 
 
 def test_tool_states_override():

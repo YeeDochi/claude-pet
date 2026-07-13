@@ -1,4 +1,4 @@
-from claudlet import physics
+from claudlet.core import physics
 
 NO_CEIL = -1e9   # effectively no ceiling, for tests that don't exercise the top
 

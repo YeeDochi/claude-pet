@@ -25,7 +25,7 @@ breaking the pet. Pure except for the single file read in load_config.
 import os
 import json
 
-from claudlet.state_engine import MAPPABLE_STATES, DEFAULT_EVENT_STATES
+from claudlet.core.state_engine import MAPPABLE_STATES, DEFAULT_EVENT_STATES
 
 
 def config_path():

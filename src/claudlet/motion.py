@@ -23,7 +23,7 @@ import tempfile
 # drifts the moment the transport changes (which is exactly what the .sock->TCP
 # migration cost). Fall back to local constants only if src/ can't be imported.
 try:
-    from claudlet import hostinfo
+    from claudlet.core import hostinfo
 except Exception:
     hostinfo = None
 

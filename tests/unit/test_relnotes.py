@@ -1,6 +1,6 @@
 """Behaviour of the release-notes renderer: commit subjects in -> grouped
 bilingual Markdown out. Pure data tests (no git), per the repo's testing rule."""
-from claudlet import relnotes
+from claudlet.core import relnotes
 
 
 def test_parse_conventional_with_scope():

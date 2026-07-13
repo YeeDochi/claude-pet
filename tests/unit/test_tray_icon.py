@@ -2,7 +2,7 @@ import sys, os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtWidgets import QApplication
-from claudlet import creature as C
+from claudlet.core import creature as C
 from claudlet import pet as P
 
 _app = QApplication.instance() or QApplication(sys.argv)

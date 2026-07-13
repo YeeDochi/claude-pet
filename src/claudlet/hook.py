@@ -30,7 +30,7 @@ except Exception:
     pass
 
 try:
-    from claudlet import hostinfo
+    from claudlet.core import hostinfo
 except Exception:
     hostinfo = None
 
