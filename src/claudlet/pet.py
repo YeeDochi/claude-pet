@@ -58,6 +58,8 @@ COMPANION_FOLLOW_START = 90             # center-gap (px) that makes it start fo
 COMPANION_FOLLOW_STOP = 60              # center-gap (px) it settles at / stops
 COMPANION_BLINK_DY = 140                # feet-line y-gap that teleports it to the pet
                                         #   (landed on a different level after a throw)
+COMPANION_REUNITE_TICKS = 90            # ticks a separated companion keeps trying to
+                                        #   walk back before giving up and blinking
 COMPANION_MAX = 3                       # companion cap: one per running agent, up to
                                         #   this many trailing in a duckling chain
 COMPANION_BYE_DUR = 1.6                 # departing celebrate ("다 됐다!") before closing
@@ -110,6 +112,13 @@ MOTION_MENU = [
 # creature legs bottom ~15.8 art rows; with PAD_Y=2 and U=5: (2 + 15.8) * 5 ≈ 89.
 # used to land the FEET on a window's top edge when perching (not the window box).
 FOOT_Y = 89
+
+# follow-mode vertical reactions (Pet._tick's `elif following:` branch): an
+# in-place "><" strain hop when the cursor is above, and climb-down off a raised
+# surface when it's below. See the follow block for the predicates.
+X_ALIGN = 14                             # cursor considered "over" the pet's column
+CURSOR_ABOVE_MARGIN = 10                 # cursor must clear this much above self.y to hop
+CURSOR_BELOW_MARGIN = 20                 # cursor must clear this much below the feet to climb down
 
 
 def _macos_keep_visible(widget):
@@ -174,6 +183,7 @@ class Companion(QWidget):
         self.vy = 0.0
         self._air = False              # True while flying/bouncing on its own
         self._depart_until = None      # monotonic deadline of the goodbye wave
+        self._reunite_ticks = 0        # ticks spent separated, trying to walk back
         self.hat = random.choice(C.HAT_KINDS)   # each sidekick gets its own hat
 
     def depart_tick(self):
@@ -583,18 +593,46 @@ class Pet(QWidget):
             # the floor. Bounds come from _bounds(), so a pet perched inside a
             # window follows WITHIN that window rather than leaving it.
             left, right, _t, floor = self._bounds()
-            curx, _cury = self._cursor_pos()
-            self.target_x = min(max(curx - self.w / 2.0, left), right)
-            dx = self.target_x - self.x
-            speed = 10.0                    # constant pace (no speed-up when far)
-            if abs(dx) <= speed:
-                self.x = self.target_x
-                self._render_state = eff    # arrived: resume normal animation
+            # surface under us dropped away (window closed/moved, or we walked
+            # off a ledge) -> fall to it instead of snapping/teleporting
+            # (mirrors _roam and the stationary-state branch below).
+            if self.y < floor - 2:
+                self.vx = 0.0
+                self.vy = 0.0
+                self.mode = "thrown"
+                self.target_x = None
             else:
-                self.facing = 1 if dx > 0 else -1
-                self.x += speed * self.facing
-                self._render_state = "walk"
-            self.y = floor
+                curx, cury = self._cursor_pos()
+                desired = curx - self.w / 2.0
+                self.target_x = min(max(desired, left), right)
+                dx = self.target_x - self.x
+                petcx = self.x + self.w / 2.0
+                feet = self.y + FOOT_Y
+                aligned = abs(petcx - curx) <= X_ALIGN
+                if aligned and cury < self.y - CURSOR_ABOVE_MARGIN:
+                    # cursor clearly ABOVE the pet's head -> an in-place "><" hop
+                    # (strain): the render bobs from the frame counter. Stays
+                    # grounded -- no real jump, no travel.
+                    self.y = floor
+                    self._render_state = "strain"
+                elif (aligned and cury > feet + CURSOR_BELOW_MARGIN
+                        and floor <= self.y + 2):
+                    # cursor BELOW a raised surface we're resting on -> climb down;
+                    # the ⑤ fall guard (above) finishes the descent next tick.
+                    self._render_state = "climbdown"
+                    self.y += 6
+                else:
+                    # otherwise WALK toward the cursor's column on the current
+                    # surface (no jumping between windows).
+                    speed = 10.0                # constant pace (no speed-up when far)
+                    if abs(dx) <= speed:
+                        self.x = self.target_x
+                        self._render_state = eff    # arrived: resume normal animation
+                    else:
+                        self.facing = 1 if dx > 0 else -1
+                        self.x += speed * self.facing
+                        self._render_state = "walk"
+                    self.y = floor
         elif floating:
             # hover in place (no gravity): show the floaty pose when idle,
             # otherwise keep the live Claude-activity animation.
@@ -705,9 +743,6 @@ class Pet(QWidget):
             self._comp_flung = False
 
         ratio = COMPANION_U / float(U)
-        # ground = the PET's current feet line, wherever it stands (screen
-        # floor, window perch, contained interior) — the chain shares its level.
-        ground_y = self.y + FOOT_Y * (1.0 - ratio)
         leader = self
         for c in self._companions:
             if c._air:
@@ -730,13 +765,51 @@ class Pet(QWidget):
                                  + FOOT_Y * (1.0 - ratio))
                 c.fly(fly_l, fly_r, fly_t, fly_floor)
             else:
-                # a level away (landed a throw somewhere else)? BLINK to the pet
-                # instead of walking a floating line across the screen.
-                if abs(c.y - ground_y) > COMPANION_BLINK_DY:
-                    c.x = self.x + (self.w - c.w) / 2.0
+                # Each companion rests on the surface under ITS OWN column
+                # (screen floor or a window top) — not the pet's shared level.
+                # Pick the window in this column whose top is NEAREST the
+                # companion's own feet (not support_surface_under's
+                # global-topmost, which would float it up to the highest of two
+                # overlapping windows — the anti-pattern flagged for the pet's
+                # jump above). Nearest-to-feet also handles both directions with
+                # one rule: a floor-standing companion climbs onto a window in
+                # its column, a companion above a window falls flush onto it,
+                # and it never drops through the surface it already rests on.
+                # The bare screen floor is the fallback when no window spans it.
+                ccx = c.x + c.w / 2.0
+                comp_feet = c.y + FOOT_Y * ratio
+                screen_bottom = self._screen_bottom_at(ccx)
+                surf = None
+                for w in self._wins:
+                    if w.x <= ccx <= w.x + w.w:
+                        if surf is None or abs(w.y - comp_feet) < abs(surf - comp_feet):
+                            surf = w.y
+                if surf is None:
+                    # bare floor: feet-align to the pet's shared floor line —
+                    # reduces to the old shared ground_y when the pet is on the
+                    # same screen floor (surf - self.h + FOOT_Y*(1-ratio)).
+                    comp_ground = screen_bottom - self.h + FOOT_Y * (1.0 - ratio)
+                else:
+                    # window perch: feet FLUSH with the window top. This also
+                    # reduces to the old shared ground_y when the pet perches on
+                    # this same window (pet.y = surf - FOOT_Y there, so
+                    # ground_y = surf - FOOT_Y + FOOT_Y*(1-ratio) = surf - FOOT_Y*ratio).
+                    comp_ground = surf - FOOT_Y * ratio
+                # a level away (landed a throw somewhere else)? Give it a chance
+                # to walk itself back first (it still advance()s toward the pet
+                # below, on its own resolved surface) — only after
+                # COMPANION_REUNITE_TICKS of failing does it BLINK to the pet,
+                # instead of walking a floating line across the screen forever.
+                if abs(c.y - comp_ground) > COMPANION_BLINK_DY:
+                    c._reunite_ticks += 1
+                    if c._reunite_ticks >= COMPANION_REUNITE_TICKS:
+                        c.x = self.x + (self.w - c.w) / 2.0
+                        c._reunite_ticks = 0
+                else:
+                    c._reunite_ticks = 0
                 # duckling chain: chase your LEADER's centre (pet for the first)
                 target_x = leader.x + leader.w / 2.0
-                c.advance(target_x, ground_y, self.engine.agent_state())
+                c.advance(target_x, comp_ground, self.engine.agent_state())
             self._occlude_companion(c)
             if not c.isVisible():
                 c.show()

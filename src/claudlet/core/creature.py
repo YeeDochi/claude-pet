@@ -31,7 +31,7 @@ STATES = ("idle", "walk", "work_computer", "work_search", "work_web",
           "work_agent", "work_skill", "autopilot") + AUTO_VARIANTS + (
           "thinking", "attention", "asking",
           "error", "celebrate", "sleeping", "held", "falling",
-          "jump", "wave", "sing", "juggle", "float")
+          "jump", "wave", "sing", "juggle", "float", "climbdown", "strain")
 
 # prop drawn beside each auto_* variant (auto_skill uses a visor glint instead)
 _AUTO_PROP = {"auto_computer": "window", "auto_search": "magnify",
@@ -248,10 +248,30 @@ def draw_creature(p, ox, oy, u, state, frame, facing=1, visor=None, cap=None):
         sx, sy = 1.03, 1.03                      # faintly puffed
         legphase = 0.5
         eyes = "open"
+    elif state == "climbdown":
+        # getting down off a ledge: body leans back toward the ledge above,
+        # arms reach up as if still gripping it, legs stretch down feeling
+        # for footing below. focused, careful eyes.
+        tilt = -11                               # lean back toward the ledge
+        sy = 1.06                                # stretched, reaching down
+        sx = 0.97
+        bob = 0.6
+        legphase = 0.5                           # legs lowered, not walking
+        eyes = "focus"
+    elif state == "strain":
+        # the failed-reach hop: same rig as `jump`, but frustrated — narrowed,
+        # strained eyes instead of the happy hop.
+        j = abs(_sin(frame, 16, 5.5))            # tall hop
+        bob = -j
+        sy = 1.0 + 0.14 * (j / 5.5)              # stretch at apex
+        sx = 1.0 - 0.10 * (j / 5.5)
+        legphase = 0.5
+        eyes = "squint"
 
     # arm pose derived from state (arms live on the LEFT/RIGHT sides)
     arm = {"work_computer": "none", "attention": "up", "celebrate": "up",
-           "held": "up", "falling": "up", "juggle": "up", "wave": "wave"}.get(state, "side")
+           "held": "up", "falling": "up", "juggle": "up", "wave": "wave",
+           "climbdown": "up"}.get(state, "side")
     arm_swing = (_sin(frame, 12, 0.5) if state == "walk" else
                  _sin(frame, 16, 0.5) if state in _WALKERS else 0.0)
 
@@ -336,6 +356,19 @@ def draw_creature(p, ox, oy, u, state, frame, facing=1, visor=None, cap=None):
             px(col - 0.6, er + 1.0, 2.6, 0.6, EYE)   # wider closed eyes when sleeping
         elif kind == "focus":
             px(col, er + 0.6, 1.6, 0.9, EYE)
+        elif kind == "squint":
+            # scrunched-shut straining eyes "><": each eye is two short strokes
+            # meeting at a point on its INNER side, so the vertices point toward
+            # the nose. Left eye ">" (point on its right), right eye "<" (point
+            # on its left) — a MIRRORED per-eye shape, so key off which side the
+            # eye is on (this style only; others stay identical L/R).
+            left = col < 10.0
+            c = col + (0.5 if left else -0.5)         # shift ½ cell inward (nose)
+            vtx = c + 0.9 if left else c              # inner vertex block x
+            outr = c if left else c + 0.9             # outer stroke ends x
+            px(outr, er + 0.3, 1.1, 0.6, EYE)         # upper stroke (outer end)
+            px(vtx, er + 0.85, 1.1, 0.6, EYE)         # inner vertex (mid)
+            px(outr, er + 1.4, 1.1, 0.6, EYE)         # lower stroke (outer end)
         elif kind == "up":
             px(col, er - 0.4, 1.4, 1.6, EYE)
         elif kind == "wide":
@@ -615,7 +648,8 @@ if __name__ == "__main__":
                "attention": "권한 요청", "asking": "질문·플랜 대기",
                "celebrate": "완료", "error": "실패", "sleeping": "수면",
                "jump": "모션 · 점프", "wave": "모션 · 손 흔들기",
-               "sing": "모션 · 노래", "juggle": "모션 · 저글링", "float": "모션 · 둥둥"},
+               "sing": "모션 · 노래", "juggle": "모션 · 저글링", "float": "모션 · 둥둥",
+               "climbdown": "모션 · 내려오기", "strain": "모션 · 안간힘"},
         "en": {"idle": "idle", "walk": "roaming",
                "work_computer": "edit · run", "work_search": "read · search",
                "work_web": "web · MCP", "work_agent": "subagent",
@@ -627,7 +661,8 @@ if __name__ == "__main__":
                "celebrate": "done", "error": "failed", "sleeping": "asleep",
                "jump": "motion · jump", "wave": "motion · wave",
                "sing": "motion · sing", "juggle": "motion · juggle",
-               "float": "motion · float"},
+               "float": "motion · float",
+               "climbdown": "motion · climb down", "strain": "motion · strain"},
     }
     labels = LABELS[sheet_lang]
     TITLE = {"ko": "claudlet — 오리지널 크리처 · 전부 코드 렌더 · CC0",
@@ -639,7 +674,7 @@ if __name__ == "__main__":
              "auto_computer", "auto_search", "auto_web", "auto_skill",
              "thinking", "attention", "asking",
              "celebrate", "error", "sleeping",
-             "jump", "wave", "sing", "juggle", "float"]
+             "jump", "wave", "sing", "juggle", "float", "climbdown", "strain"]
     # show two animation frames per state to convey motion
     u = 7
     cellw, cellh = 210, 190

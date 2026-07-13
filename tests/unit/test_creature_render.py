@@ -50,6 +50,23 @@ def test_new_motions_render_without_error():
                 p.end()
 
 
+NEW_LOOKS = {"climbdown", "strain"}
+
+
+def test_new_looks_present():
+    assert NEW_LOOKS.issubset(set(C.STATES)), NEW_LOOKS - set(C.STATES)
+
+
+def test_new_looks_render_without_error():
+    img = QImage(C.GRID_W * 6, C.GRID_H * 6, QImage.Format.Format_ARGB32)
+    for st in NEW_LOOKS:
+        for frame in (0, 7, 50, 100):
+            for facing in (1, -1):
+                p = QPainter(img)
+                C.draw_creature(p, 0, 0, 6, st, frame, facing=facing)
+                p.end()
+
+
 def test_speech_language_switch():
     # set_lang flips the bubble text; default is Korean
     C.set_lang("ko")

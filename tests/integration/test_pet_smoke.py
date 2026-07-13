@@ -94,25 +94,26 @@ def test_companion_fling_bounces_with_own_physics():
 
 
 def test_companion_stands_on_pets_feet_line(monkeypatch):
-    # the companion's ground is the PET's current feet line wherever it stands
-    # (screen floor, window perch, contained interior) — so it follows the pet
-    # into windows and onto perches by construction.
+    # with no windows around, the companion resolves its OWN ground to the
+    # bare screen floor -- which happens to be the same line the pet itself
+    # stands on, so this still reduces to "feet on the pet's feet line".
     p = P.Pet(session_id="cmpwin")
     try:
         monkeypatch.setattr(p.engine, "agents_active", lambda: 1)
         p.mode = "roam"
-        p.y = 337.0                              # pet standing somewhere specific
+        p.x, p.y = 400.0, p.floor_y               # pet resting on the real floor
         p._sync_companion()
         c = p._companion
         expected = p.y + P.FOOT_Y * (1.0 - P.COMPANION_U / float(P.U))
-        assert abs(c.y - expected) < 1.0         # feet on the pet's feet line
+        assert abs(c.y - expected) < 1.0         # feet on the (shared) floor line
     finally:
         p._cleanup()
 
 
 def test_companion_blinks_over_when_a_level_apart(monkeypatch):
-    # landed a throw on a different level: instead of walking a floating line
-    # across the screen, the companion teleports beside the pet.
+    # landed a throw on a different level: it first TRIES to walk itself back
+    # (Task 6 grace period) and only teleports beside the pet after failing to
+    # reunite for COMPANION_REUNITE_TICKS.
     p = P.Pet(session_id="cmpblink")
     try:
         monkeypatch.setattr(p.engine, "agents_active", lambda: 1)
@@ -120,8 +121,124 @@ def test_companion_blinks_over_when_a_level_apart(monkeypatch):
         p._sync_companion()
         c = p._companion
         c.x, c.y = p.x + 500, p.y + P.COMPANION_BLINK_DY + 200   # far + a level below
-        p._sync_companion()
+        for _ in range(P.COMPANION_REUNITE_TICKS):
+            c.y = p.y + P.COMPANION_BLINK_DY + 200   # stays stranded on its level
+            p._sync_companion()
         assert abs((c.x + c.w / 2.0) - (p.x + p.w / 2.0)) < c.w  # blinked to the pet
+    finally:
+        p._cleanup()
+
+
+def test_companion_walks_back_before_blinking(monkeypatch):
+    p = P.Pet(session_id="cmpwalkback")
+    try:
+        monkeypatch.setattr(p.engine, "agents_active", lambda: 1)
+        monkeypatch.setattr(p.engine, "agent_state", lambda: "idle")
+        p._wins = []                                  # flat floor, no windows
+        p.x = 100.0; p.y = p.floor_y
+        p._sync_companion()
+        c = p._companions[0]
+        c.x = 900.0                                     # far from the pet, SAME level
+        x0 = c.x
+        p._sync_companion()
+        # same level -> it should WALK toward the pet, not blink-snap to pet.x
+        assert c.x != p.x + (p.w - c.w) / 2.0           # did not teleport
+        assert c.x < x0                                 # moved toward the pet (leftward)
+    finally:
+        p._cleanup()
+
+
+def test_separated_companion_blinks_only_after_effort(monkeypatch):
+    p = P.Pet(session_id="cmpreunite")
+    try:
+        monkeypatch.setattr(p.engine, "agents_active", lambda: 1)
+        monkeypatch.setattr(p.engine, "agent_state", lambda: "idle")
+        p._wins = []; p.x = 100.0; p.y = p.floor_y
+        p._sync_companion(); c = p._companions[0]
+        # strand it on a different level (as if it landed a throw up high)
+        c.y = p.floor_y - 400; c.x = 900.0
+        # first tick while separated: it should NOT immediately blink
+        p._sync_companion()
+        assert c._reunite_ticks >= 1
+        assert c.x != p.x + (p.w - c.w) / 2.0            # not teleported yet
+        # after exceeding the budget while still separated: it blinks back
+        c._reunite_ticks = P.COMPANION_REUNITE_TICKS
+        c.y = p.floor_y - 400
+        p._sync_companion()
+        assert abs(c.x - (p.x + (p.w - c.w) / 2.0)) < 1.0   # blinked to the pet
+    finally:
+        p._cleanup()
+
+
+def test_companion_rests_on_its_own_window(monkeypatch):
+    # one active agent -> one companion; a window sits under the companion's
+    # OWN column but NOT under the pet's -> the companion must rest on that
+    # window's top, not float/clip at the pet's shared floor level.
+    from claudlet.platform import geom as W
+    p = P.Pet(session_id="cmpown")
+    try:
+        monkeypatch.setattr(p.engine, "agents_active", lambda: 1)
+        monkeypatch.setattr(p.engine, "agent_state", lambda: "idle")
+        p.x, p.y = 50.0, p.floor_y                 # pet on the floor, left
+        p._wins = [W.Win("w1", 500, 250, 300, 400, "code", 1)]  # window far right
+        p._sync_companion()
+        c = p._companion
+        c.x = 560.0                                # move companion over the window
+        p._sync_companion()
+        # companion's feet should be on the window top (~y=250), well above
+        # the pet's own floor line.
+        assert c.y < p.floor_y - 100
+    finally:
+        p._cleanup()
+
+
+def test_companion_perch_identity_on_a_window(monkeypatch):
+    # PERCH-CASE identity: the pet resting ON a window, a companion in the SAME
+    # window column -> the companion's feet sit FLUSH on that window top, and
+    # its ground reduces to the pet's shared feet line (identity holds on a
+    # window perch, not only on the bare floor).
+    from claudlet.platform import geom as W
+    p = P.Pet(session_id="cmpperch")
+    try:
+        monkeypatch.setattr(p.engine, "agents_active", lambda: 1)
+        monkeypatch.setattr(p.engine, "agent_state", lambda: "idle")
+        win = W.Win("w1", 100, 300, 400, 400, "code", 1)   # window top y=300
+        p._wins = [win]
+        p.x, p.y = 200.0, 100.0             # above the window, within its column
+        _l, _r, _t, floor = p._bounds()     # perched on the window top
+        p.y = floor                         # settle there (feet flush at y=300)
+        p._sync_companion()
+        c = p._companion
+        c.x = 200.0                         # same column as the pet
+        p._sync_companion()
+        ratio = P.COMPANION_U / float(P.U)
+        expected = p.y + P.FOOT_Y * (1.0 - ratio)     # the pet's shared feet line
+        assert abs(c.y - expected) < 1.0              # identity holds on the perch
+        assert abs((c.y + P.FOOT_Y * ratio) - win.y) < 1.0   # feet flush on the top
+    finally:
+        p._cleanup()
+
+
+def test_companion_rests_on_nearer_of_overlapping_windows(monkeypatch):
+    # two overlapping windows in the companion's column -> it rests on the
+    # NEARER (lower) one, never floating up to the global-topmost.
+    from claudlet.platform import geom as W
+    p = P.Pet(session_id="cmpovl")
+    try:
+        monkeypatch.setattr(p.engine, "agents_active", lambda: 1)
+        monkeypatch.setattr(p.engine, "agent_state", lambda: "idle")
+        p.x, p.y = 50.0, p.floor_y                     # pet on the floor, left
+        hi = W.Win("hi", 500, 150, 300, 600, "code", 1)   # top y=150 (far/high)
+        lo = W.Win("lo", 500, 450, 300, 300, "code", 2)   # top y=450 (nearer floor)
+        p._wins = [hi, lo]
+        p._sync_companion()
+        c = p._companion
+        c.x = 560.0                                    # over BOTH windows
+        p._sync_companion()
+        ratio = P.COMPANION_U / float(P.U)
+        # feet flush on the NEARER (lower) window top, not the topmost one
+        assert abs((c.y + P.FOOT_Y * ratio) - lo.y) < 1.0
+        assert c.y > (hi.y - P.FOOT_Y * ratio) + 50    # clearly not the high one
     finally:
         p._cleanup()
 
@@ -588,6 +705,122 @@ def test_follow_toggle_and_tick_glides_toward_cursor():
         assert p.screen_rect.left() <= p.x <= p.screen_rect.right()
         p._toggle_follow()
         assert p._follow is False
+    finally:
+        p._cleanup()
+
+
+def test_follow_falls_when_support_drops():
+    # grounded follow perches on a window's top edge like _roam does; if that
+    # window vanishes it must fall (mode "thrown"), not snap straight to
+    # whatever floor is now underneath (the pre-fix teleport bug).
+    from claudlet.platform import geom as W
+    p = P.Pet(session_id="ff1")
+    try:
+        p._follow = True
+        p.mode = "roam"
+        win = W.Win("w1", 0, 300, 800, 400, "code", 1)   # window top at y=300
+        p._wins = [win]
+        p.x, p.y = 340.0, 100.0            # above the window, within its column
+        _l, _r, _t, floor = p._bounds()    # floor = the window's top edge
+        p.y = floor                        # already resting there (settled)
+        p._on_cursor("400,320")            # cursor over the window
+        p._tick()
+        assert p.mode == "roam" and p.y == floor   # sanity: stays perched
+        p._wins = []                       # window closed
+        p._tick()
+        assert p.mode == "thrown", "support dropped -> should fall, not snap"
+    finally:
+        p._cleanup()
+
+
+def test_follow_walks_on_flat_floor_without_hopping():
+    # regression: on the bare screen floor (no windows) there is NO ledge, so
+    # grounded follow must WALK toward the cursor, never launch the ledge-leap.
+    # The bug: comparing the probe surface to an approximate feet line
+    # (self.y + FOOT_Y) instead of surface-to-surface false-positived every
+    # tick on flat ground (floor there is surface - self.h, ~16px off FOOT_Y),
+    # so the pet hopped (mode "thrown") forever instead of walking.
+    p = P.Pet(session_id="ff2")
+    try:
+        p._follow = True
+        p.mode = "roam"
+        p._wins = []                       # bare desktop: only the screen floor
+        _l, _r, _t, floor = p._bounds()
+        p.x = float(p.screen_rect.left())  # far left; cursor is off to the right
+        p.y = floor
+        p._on_cursor(f"{p.screen_rect.right()},{int(p.y)}")
+        for _ in range(5):
+            p._tick()
+            assert p.mode != "thrown", "flat floor has no ledge -> must walk, not hop"
+        assert p.x > float(p.screen_rect.left())   # actually made progress walking
+    finally:
+        p._cleanup()
+
+
+def test_follow_strain_hops_when_cursor_unreachably_above():
+    # cursor is aligned and far above the pet, but there's nothing to land on
+    # (no windows) -> an in-place strain-hop (squint-eyed jump rig), never a
+    # doomed ballistic arc toward empty air.
+    p = P.Pet(session_id="st1")
+    try:
+        p._follow = True
+        p.mode = "roam"
+        p._wins = []                                    # nothing to land on above
+        p.x, p.y = 400.0, p.floor_y                      # on the screen floor
+        petcx = p.x + p.w / 2.0
+        p._on_cursor(f"{int(petcx)},{int(p.y) - 400}")   # aligned, far above -> unreachable
+        p._tick()
+        assert p._render_state == "strain"
+        assert p.mode != "thrown", "unreachable above must not launch a doomed arc"
+    finally:
+        p._cleanup()
+
+
+def test_follow_strains_when_cursor_above_but_beyond_jump_reach():
+    # a platform ~48px above the current surface -- inside the OLD JUMP_REACH=70
+    # (would have launched a doomed arc -> hop loop) but beyond the achievable
+    # apex. ③ must STRAIN in place, never launch.
+    from claudlet.platform import geom as W
+    p = P.Pet(session_id="st2")
+    try:
+        p._follow = True
+        p.mode = "roam"
+        p.x, p.y = 400.0, float(p.floor_y)               # on the screen floor
+        petcx = p.x + p.w / 2.0
+        sb = p._screen_bottom_at(petcx)
+        # FIXED 48px above the current surface: inside the old JUMP_REACH=70
+        # (would have wrongly launched) but well beyond the ~28px apex. Fixed,
+        # NOT derived from JUMP_REACH, so it stays RED if JUMP_REACH regresses.
+        wy = sb - 48
+        win = W.Win("w1", 0, int(wy), 800, 400, "code", 1)
+        p._wins = [win]
+        p._on_cursor(f"{int(petcx)},{int(p.y) - 60}")     # aligned, above margin
+        p._tick()
+        assert p._render_state == "strain"
+        assert p.mode != "thrown", "beyond reach must strain, not launch a doomed arc"
+    finally:
+        p._cleanup()
+
+
+def test_follow_climbs_down_when_cursor_below_on_window():
+    # perched on a window; cursor sits aligned and well below the window's
+    # surface -> climb down in place on the first tick (the fall guard takes
+    # over on a later tick once the surface drops out of reach).
+    from claudlet.platform import geom as W
+    p = P.Pet(session_id="cd1")
+    try:
+        p._follow = True
+        p.mode = "roam"
+        win = W.Win("w1", 0, 300, 800, 400, "code", 1)    # window top at y=300
+        p._wins = [win]
+        p.x, p.y = 340.0, 100.0              # above the window, within its column
+        _l, _r, _t, floor = p._bounds()      # floor = perched on the window's top
+        p.y = floor                          # settle onto the perch
+        petcx = p.x + p.w / 2.0
+        p._on_cursor(f"{int(petcx)},{int(p.y) + P.FOOT_Y + 100}")   # aligned, well below
+        p._tick()
+        assert p._render_state == "climbdown"
+        assert p.mode != "thrown", "first tick should descend in place, not free-fall"
     finally:
         p._cleanup()
 
