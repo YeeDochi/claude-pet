@@ -102,7 +102,8 @@ def _sin(frame, period, amp, phase=0.0):
     return math.sin((frame / period + phase) * 2 * math.pi) * amp
 
 
-def draw_creature(p, ox, oy, u, state, frame, facing=1, visor=None, cap=None):
+def draw_creature(p, ox, oy, u, state, frame, facing=1, visor=None, cap=None,
+                  energy=1.0):
     """Draw the creature. All coordinates are in art pixels * u.
 
     visor="up" pushes a VR-headset up onto the head (auto mode while not actively
@@ -122,14 +123,23 @@ def draw_creature(p, ox, oy, u, state, frame, facing=1, visor=None, cap=None):
     front_tap = 0.0    # front legs tapping (working)
     baseline_lift = 0.0
 
+    # 0 = exhausted, 1 = fresh. Droops the idle/walk rig when energy is low.
+    droop = 1.0 - max(0.0, min(1.0, energy))   # 0 fresh .. 1 tired
+
     if state == "idle":
-        bob = _sin(frame, 34, 0.5)
-        if frame % 90 < 4:
+        bob = _sin(frame, 34, 0.5) * (1.0 - 0.6 * droop)   # calmer bob when tired
+        baseline_lift = 1.2 * droop                        # sinks a little
+        tilt = 3.0 * droop                                 # head lolls
+        if droop > 0.5:
+            eyes = "sleep" if frame % 60 < 40 else "blink"  # heavy lids
+        elif frame % 90 < 4:
             eyes = "blink"
     elif state == "walk":
-        bob = abs(_sin(frame, 12, 0.9))
+        amp = 0.9 * (1.0 - 0.5 * droop)
+        bob = abs(_sin(frame, 12, amp))
         legphase = (frame / 12.0) % 1.0
         tilt = _sin(frame, 12, 2.0)
+        baseline_lift = 0.8 * droop                        # trudges when tired
     elif state == "work_computer":
         bob = _sin(frame, 30, 0.3)                # gentle head bob while typing
         eyes = "focus"
