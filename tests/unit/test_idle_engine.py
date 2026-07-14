@@ -24,7 +24,8 @@ def test_roam_drains_energy():
 
 def test_passive_time_drains_slowly_when_not_resting():
     e = IdleEnergy()
-    e.update(now=300.0, resting=False)   # 5 min elapsed
+    e.update(now=0.0, resting=False)     # first call records the clock baseline
+    e.update(now=300.0, resting=False)   # 5 min elapsed -> drains
     assert e.value < 1.0
 
 

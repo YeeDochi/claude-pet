@@ -25,7 +25,7 @@ def _clamp(v):
 class IdleEnergy:
     def __init__(self, energy=1.0):
         self.value = _clamp(energy)
-        self._last = 0.0       # last `now` seen by update() (for dt)
+        self._last = None      # last `now` seen by update() (for dt)
 
     def note_event(self, now):
         self.value = _clamp(self.value - _EVENT_DRAIN)
@@ -34,6 +34,9 @@ class IdleEnergy:
         self.value = _clamp(self.value - _ROAM_DRAIN)
 
     def update(self, now, resting):
+        if self._last is None:
+            self._last = now
+            return
         dt_min = max(0.0, (now - self._last) / 60.0)
         self._last = now
         if resting:
