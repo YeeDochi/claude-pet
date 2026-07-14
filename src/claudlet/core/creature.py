@@ -32,7 +32,7 @@ STATES = ("idle", "walk", "work_computer", "work_search", "work_web",
           "thinking", "attention", "asking",
           "error", "celebrate", "sleeping", "held", "falling",
           "jump", "wave", "sing", "juggle", "float", "climbdown", "strain",
-          "leap")
+          "leap", "observe", "tic", "settle", "doze")
 
 # prop drawn beside each auto_* variant (auto_skill uses a visor glint instead)
 _AUTO_PROP = {"auto_computer": "window", "auto_search": "magnify",
@@ -286,6 +286,38 @@ def draw_creature(p, ox, oy, u, state, frame, facing=1, visor=None, cap=None,
         sx = 1.0 - 0.10 * (j / 5.5)
         legphase = 0.5
         eyes = "squint"
+    elif state == "observe":
+        # standing calmly, slowly looking around (curious head cant + up-gaze)
+        bob = _sin(frame, 44, 0.4)
+        tilt = _sin(frame, 120, 6.0)     # slow deliberate scan
+        eyes = "up"
+    elif state == "tic":
+        # a brief stretch/yawn: rise up tall then settle, mouth-open eyes
+        t = (frame % 40) / 40.0
+        s = math.sin(t * math.pi)        # 0..1..0 over the cycle
+        bob = -1.5 * s
+        sx = 1.0 - 0.06 * s
+        sy = 1.0 + 0.10 * s
+        eyes = "happy" if s > 0.5 else "open"
+    elif state == "settle":
+        # plopped down, spacing out: sunk low, squashed wide, half-lidded
+        bob = 0.0
+        baseline_lift = 3.0
+        sx, sy = 1.12, 0.86
+        legphase = 0.5                   # legs tucked under
+        eyes = "sleep" if frame % 80 < 30 else "open"
+    elif state == "doze":
+        # nodding off: head drops on a slow cycle then jerks back up
+        t = (frame % 130) / 130.0
+        nod = max(0.0, math.sin(t * math.pi))
+        baseline_lift = 3.0
+        sx, sy = 1.10, 0.88
+        tilt = 10.0 * nod
+        bob = 0.8 * nod
+        legphase = 0.5
+        eyes = "sleep" if nod > 0.25 else "blink"
+        if nod > 0.9:
+            prop = "zzz"
 
     # arm pose derived from state (arms live on the LEFT/RIGHT sides)
     arm = {"work_computer": "none", "attention": "up", "celebrate": "up",

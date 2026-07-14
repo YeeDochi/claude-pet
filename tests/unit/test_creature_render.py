@@ -114,3 +114,20 @@ def test_energy_droop_changes_render_and_full_matches_default():
         for f in (0, 20, 45, 60, 90):
             assert _render(state, f, energy=1.0) == _render(state, f), \
                 f"{state} frame {f}: energy=1.0 differs from default"
+
+
+REST_POSES = {"observe", "tic", "settle", "doze"}
+
+
+def test_rest_poses_present():
+    assert REST_POSES.issubset(set(C.STATES)), REST_POSES - set(C.STATES)
+
+
+def test_rest_poses_render_without_error():
+    img = QImage(C.GRID_W * 6, C.GRID_H * 6, QImage.Format.Format_ARGB32)
+    for st in REST_POSES:
+        for frame in (0, 7, 50, 100):
+            for facing in (1, -1):
+                p = QPainter(img)
+                C.draw_creature(p, 0, 0, 6, st, frame, facing=facing)
+                p.end()
