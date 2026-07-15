@@ -19,7 +19,7 @@ for _stream in (sys.stdout, sys.stderr):
 HERE = os.path.dirname(os.path.abspath(__file__))
 SKILLS_DIR = os.path.expanduser(os.path.join("~", ".claude", "skills"))
 SKILL_LINK = os.path.join(SKILLS_DIR, "claudlet")
-SKILL_SRC = os.path.join(HERE, "skill")          # packaged skill data
+SKILL_SRC = os.path.join(os.path.dirname(HERE), "skill")  # packaged skill data (claudlet/skill, not cli/skill)
 
 # README links shown when setup finishes. EN points at the repo root (GitHub
 # renders README.md there); KO points at the Korean README explicitly.
