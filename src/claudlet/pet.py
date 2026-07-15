@@ -96,10 +96,14 @@ _ICON_FRAME = {"work_computer": 100, "walk": 6, "work_search": 4}
 UI = {
     "ko": {"follow": "커서 따라오기", "motions": "모션",
            "float": "둥둥 띄우기 (중력 끄기)", "quiet": "조용히 (알림 끔)",
-           "release": "창에서 꺼내기", "quit": "종료"},
+           "release": "창에서 꺼내기", "quit": "종료",
+           "comp_add": "🐣 컴패니언 추가 (테스트)",
+           "comp_del": "컴패니언 제거 (테스트)"},
     "en": {"follow": "Follow cursor", "motions": "Motions",
            "float": "Float (no gravity)", "quiet": "Quiet (mute)",
-           "release": "Release from window", "quit": "Quit"},
+           "release": "Release from window", "quit": "Quit",
+           "comp_add": "🐣 Add companion (test)",
+           "comp_del": "Remove companion (test)"},
 }
 
 # transient motions offered in the menus: (name, seconds, {lang: label})
@@ -384,6 +388,8 @@ class Pet(QWidget):
         self._host_wid = None                # internalId of our host window (focus)
         self._companions = []                # agent followers, one per running agent
         self._departing = []                 # finished agents' companions waving goodbye
+        self._debug_companions = 0           # test override: force >=N companions
+                                             # (right-click menu), atop real agents
         self._hidden_for_win = False         # hidden because our perch/host went away
         self._masked = False                 # pet clipped to a window's exposed part
         self._last_mask = None               # last applied QRegion (skip redundant sets)
@@ -700,9 +706,11 @@ class Pet(QWidget):
         agent (capped at COMPANION_MAX), trailing in a duckling chain — #1
         follows the pet, #2 follows #1, and so on."""
         try:
-            n = min(self.engine.agents_active(), COMPANION_MAX)
+            active = self.engine.agents_active()
         except Exception:
-            n = 0
+            active = 0
+        # the test override forces at least N companions with no real agents.
+        n = min(max(active, self._debug_companions), COMPANION_MAX)
         now = time.monotonic()
         while len(self._companions) > max(n, 0):     # an agent finished:
             c = self._companions.pop()               # announce, then vanish
@@ -1664,6 +1672,13 @@ class Pet(QWidget):
             a_release = QAction(self.ui["release"], m)
             m.addAction(a_release)
         m.addSeparator()
+        a_comp_add = QAction(self.ui["comp_add"], m)
+        m.addAction(a_comp_add)
+        a_comp_del = None
+        if self._debug_companions > 0:
+            a_comp_del = QAction(self.ui["comp_del"], m)
+            m.addAction(a_comp_del)
+        m.addSeparator()
         a_quit = QAction(self.ui["quit"], m)
         m.addAction(a_quit)
         chosen = m.exec(gpos)
@@ -1680,6 +1695,10 @@ class Pet(QWidget):
             self._toggle_dnd()
         elif a_release is not None and chosen == a_release:
             self._contain = None
+        elif chosen == a_comp_add:
+            self._spawn_test_companion(+1)
+        elif a_comp_del is not None and chosen == a_comp_del:
+            self._spawn_test_companion(-1)
         elif chosen == a_quit:
             self._quit()
 
@@ -1700,6 +1719,14 @@ class Pet(QWidget):
         self.dnd = not self.dnd
         if getattr(self, "_act_dnd", None) is not None:
             self._act_dnd.setChecked(self.dnd)
+
+    def _spawn_test_companion(self, delta):
+        """Test helper (right-click menu): make a companion appear/disappear
+        WITHOUT a real subagent by nudging the count override, applied at once.
+        Clamped to [0, COMPANION_MAX]; real running agents still add on top."""
+        self._debug_companions = max(0, min(self._debug_companions + delta,
+                                            COMPANION_MAX))
+        self._sync_companion()
 
     def _play_motion(self, name, dur=2.5):
         # reuse the same path as a socket motion command (menu is in-process)

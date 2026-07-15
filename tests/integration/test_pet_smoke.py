@@ -327,6 +327,29 @@ def test_companion_paints_without_error():
         c.close()
 
 
+def test_spawn_test_companion_override(monkeypatch):
+    # the right-click test helper forces companions to appear WITHOUT a real
+    # agent, clamps to [0, MAX], and real agents still stack on top.
+    p = P.Pet(session_id="dbgcomp")
+    try:
+        monkeypatch.setattr(p.engine, "agents_active", lambda: 0)
+        assert p._companions == []
+        p._spawn_test_companion(+1)
+        assert len(p._companions) == 1 and p._companion.isVisible()
+        for _ in range(P.COMPANION_MAX + 3):
+            p._spawn_test_companion(+1)
+        assert len(p._companions) == P.COMPANION_MAX      # clamped
+        p._spawn_test_companion(-1)                       # removed one -> waves bye
+        assert len(p._companions) == P.COMPANION_MAX - 1
+        # a real agent adds on top of the override count
+        monkeypatch.setattr(p.engine, "agents_active",
+                            lambda: P.COMPANION_MAX)
+        p._sync_companion()
+        assert len(p._companions) == P.COMPANION_MAX
+    finally:
+        p._cleanup()
+
+
 def test_pet_shows_companion_only_while_agents_active(monkeypatch):
     p = P.Pet(session_id="cmp")
     try:
