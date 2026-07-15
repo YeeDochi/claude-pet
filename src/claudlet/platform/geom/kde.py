@@ -39,6 +39,8 @@ except Exception:                              # no QtDBus on some Qt builds
     QDBusConnection = None
 from PyQt6.QtCore import QObject, pyqtSlot
 
+from claudlet.platform.qdbus import qdbus_bin
+
 
 class _GeomReceiver(QObject):
     """D-Bus object the KWin scripts push to. `push` carries a window-geometry
@@ -80,7 +82,7 @@ def available():
         return False
     try:
         r = subprocess.run(
-            ["qdbus6", "org.kde.KWin", "/Scripting"],
+            [qdbus_bin(), "org.kde.KWin", "/Scripting"],
             timeout=3, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return r.returncode == 0
     except Exception:
@@ -172,23 +174,33 @@ def _start_geom_script(dbus_name, safe):
     # and each keeps re-dumping on every geometry change).
     plugin = "claudlet_geom_" + safe
     script_id = None
+    qdbus = qdbus_bin()
+    path = None
     try:
-        subprocess.run(["qdbus6", "org.kde.KWin", "/Scripting",
+        subprocess.run([qdbus, "org.kde.KWin", "/Scripting",
                         "org.kde.kwin.Scripting.unloadScript", plugin],
                        timeout=3, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
         with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as f:
             f.write(js)
             path = f.name
         sid = subprocess.check_output(
-            ["qdbus6", "org.kde.KWin", "/Scripting",
+            [qdbus, "org.kde.KWin", "/Scripting",
              "org.kde.kwin.Scripting.loadScript", path, plugin],
             text=True, timeout=3).strip()
-        subprocess.run(["qdbus6", "org.kde.KWin", "/Scripting",
+        subprocess.run([qdbus, "org.kde.KWin", "/Scripting",
                         "org.kde.kwin.Scripting.start"], timeout=3)
         script_id = sid          # persistent — do NOT stop now
-        os.unlink(path)
     except Exception:
         pass
+    finally:
+        # KWin has read the script by now (loadScript above); always remove the
+        # temp .js so a failed load doesn't orphan it (no cleanup glob exists
+        # for these, unlike the .port files).
+        if path:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
     return plugin, script_id
 
 
@@ -199,7 +211,7 @@ def stop(handle):
     plugin = getattr(handle, "plugin", None)
     if plugin:
         try:
-            subprocess.run(["qdbus6", "org.kde.KWin", "/Scripting",
+            subprocess.run([qdbus_bin(), "org.kde.KWin", "/Scripting",
                             "org.kde.kwin.Scripting.unloadScript", plugin],
                            timeout=3, stderr=subprocess.DEVNULL,
                            stdout=subprocess.DEVNULL)

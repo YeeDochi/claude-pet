@@ -34,6 +34,7 @@ from claudlet.core import creature as C
 from claudlet.core.state_engine import StateEngine, AUTO_ROAM, AUTO_STATES
 from claudlet.platform import focus
 from claudlet.platform import konsole
+from claudlet.platform.qdbus import qdbus_bin
 from claudlet.core import hostinfo
 from claudlet.core import petconfig
 from claudlet.core import physics
@@ -1363,28 +1364,35 @@ class Pet(QWidget):
         )
         self._cursor_plugin = "claudlet_cursor_" + re.sub(
             r"[^A-Za-z0-9_]", "_", str(self.session_id))
+        qdbus = qdbus_bin()
+        path = None
         try:
-            subprocess.run(["qdbus6", "org.kde.KWin", "/Scripting",
+            subprocess.run([qdbus, "org.kde.KWin", "/Scripting",
                             "org.kde.kwin.Scripting.unloadScript", self._cursor_plugin],
                            timeout=3, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
             with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as f:
                 f.write(js)
                 path = f.name
             subprocess.check_output(
-                ["qdbus6", "org.kde.KWin", "/Scripting",
+                [qdbus, "org.kde.KWin", "/Scripting",
                  "org.kde.kwin.Scripting.loadScript", path, self._cursor_plugin],
                 text=True, timeout=3)
-            subprocess.run(["qdbus6", "org.kde.KWin", "/Scripting",
+            subprocess.run([qdbus, "org.kde.KWin", "/Scripting",
                             "org.kde.kwin.Scripting.start"], timeout=3)
-            os.unlink(path)
         except Exception:
             pass
+        finally:
+            if path:                              # always remove the temp .js
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
 
     def _stop_cursor_feed(self):
         plugin = getattr(self, "_cursor_plugin", None)
         if plugin:
             try:
-                subprocess.run(["qdbus6", "org.kde.KWin", "/Scripting",
+                subprocess.run([qdbus_bin(), "org.kde.KWin", "/Scripting",
                                 "org.kde.kwin.Scripting.unloadScript", plugin],
                                timeout=3, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
             except Exception:
@@ -1835,23 +1843,30 @@ class Pet(QWidget):
         stopped-but-registered script behind on every click-to-focus. Best-effort;
         never raises."""
         plugin = "claudlet_act_" + re.sub(r"[^A-Za-z0-9_]", "_", str(self.session_id))
+        qdbus = qdbus_bin()
+        path = None
         try:
-            subprocess.run(["qdbus6", "org.kde.KWin", "/Scripting",
+            subprocess.run([qdbus, "org.kde.KWin", "/Scripting",
                             "org.kde.kwin.Scripting.unloadScript", plugin],
                            timeout=3, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
             with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as f:
                 f.write(js)
                 path = f.name
             subprocess.check_output(
-                ["qdbus6", "org.kde.KWin", "/Scripting",
+                [qdbus, "org.kde.KWin", "/Scripting",
                  "org.kde.kwin.Scripting.loadScript", path, plugin],
                 text=True, timeout=3)
-            subprocess.run(["qdbus6", "org.kde.KWin", "/Scripting",
+            subprocess.run([qdbus, "org.kde.KWin", "/Scripting",
                             "org.kde.kwin.Scripting.start"], timeout=3)
-            os.unlink(path)
             self._activate_plugin = plugin
         except Exception:
             pass
+        finally:
+            if path:                              # always remove the temp .js
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
 
     # ---------- bring the Claude Code terminal forward ----------
     def _konsole_focus_tab(self):
@@ -1862,9 +1877,11 @@ class Pet(QWidget):
         if not sys.platform.startswith("linux") or not self._ancestor_pids:
             return
 
+        qdbus = qdbus_bin()
+
         def run(*args):
             return subprocess.check_output(
-                ["qdbus6", *args], text=True, timeout=3,
+                [qdbus, *args], text=True, timeout=3,
                 stderr=subprocess.DEVNULL)
 
         try:
@@ -2001,7 +2018,7 @@ class Pet(QWidget):
         for plugin in (getattr(self, "_activate_plugin", None),):
             if plugin:
                 try:
-                    subprocess.run(["qdbus6", "org.kde.KWin", "/Scripting",
+                    subprocess.run([qdbus_bin(), "org.kde.KWin", "/Scripting",
                                     "org.kde.kwin.Scripting.unloadScript", plugin],
                                    timeout=3, stderr=subprocess.DEVNULL,
                                    stdout=subprocess.DEVNULL)
