@@ -1482,3 +1482,18 @@ def test_env_forces_palette(monkeypatch):
         assert p._palette == "shiny_violet"
     finally:
         p._cleanup()
+
+
+def test_zone_edit_callback_adds_and_clear_empties():
+    p = P.Pet(session_id="zoneedit")
+    try:
+        p._no_go = []
+        p._enter_zone_edit()                       # opens overlay (offscreen)
+        assert p._zone_overlay is not None
+        # simulate the overlay reporting a drawn (absolute-coord) zone
+        p._zone_overlay.on_zone({"x": 500.0, "y": 300.0, "w": 200.0, "h": 150.0})
+        assert {"x": 500.0, "y": 300.0, "w": 200.0, "h": 150.0} in p._no_go
+        p._clear_zones()
+        assert p._no_go == []
+    finally:
+        p._cleanup()

@@ -100,12 +100,14 @@ UI = {
            "float": "둥둥 띄우기 (중력 끄기)", "quiet": "조용히 (알림 끔)",
            "release": "창에서 꺼내기", "quit": "종료",
            "comp_add": "🐣 컴패니언 추가 (테스트)",
-           "comp_del": "컴패니언 제거 (테스트)"},
+           "comp_del": "컴패니언 제거 (테스트)",
+           "zone_edit": "🚫 금지구역 편집", "zone_clear": "금지구역 지우기"},
     "en": {"follow": "Follow cursor", "motions": "Motions",
            "float": "Float (no gravity)", "quiet": "Quiet (mute)",
            "release": "Release from window", "quit": "Quit",
            "comp_add": "🐣 Add companion (test)",
-           "comp_del": "Remove companion (test)"},
+           "comp_del": "Remove companion (test)",
+           "zone_edit": "🚫 Edit no-go zones", "zone_clear": "Clear no-go zones"},
 }
 
 # transient motions offered in the menus: (name, seconds, {lang: label})
@@ -319,6 +321,86 @@ class Companion(QWidget):
         p.end()
 
 
+class ZoneOverlay(QWidget):
+    """Full virtual-desktop translucent overlay for drawing no-go zones.
+    Zones are in absolute virtual-desktop pixels; the overlay sits at
+    screen_rect's origin, so local = absolute - origin."""
+    def __init__(self, screen_rect, zones, on_zone, on_done):
+        super().__init__(None)
+        self._origin = screen_rect.topLeft()
+        self._zones = list(zones)          # absolute-coord rects, for display
+        self._on_zone = on_zone
+        self._on_done = on_done
+        self._drag = None                  # (x0,y0,x1,y1) local, in-progress
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint
+                            | Qt.WindowType.WindowStaysOnTopHint
+                            | Qt.WindowType.Tool)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setGeometry(screen_rect)
+        self.setCursor(Qt.CursorShape.CrossCursor)
+
+    def on_zone(self, rect):
+        """Entry point the controller/tests call when a zone is finalized."""
+        self._zones.append(rect)
+        self._on_zone(rect)
+        self.update()
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.MouseButton.RightButton:
+            self._finish(); return
+        pos = e.position()
+        self._drag = (pos.x(), pos.y(), pos.x(), pos.y())
+
+    def mouseMoveEvent(self, e):
+        if self._drag is not None:
+            pos = e.position()
+            self._drag = (self._drag[0], self._drag[1], pos.x(), pos.y())
+            self.update()
+
+    def mouseReleaseEvent(self, e):
+        if self._drag is None:
+            return
+        x0, y0, x1, y1 = self._drag
+        self._drag = None
+        ox, oy = self._origin.x(), self._origin.y()
+        rect = roambounds.normalize_rect(x0 + ox, y0 + oy, x1 + ox, y1 + oy)
+        if rect is not None:
+            self.on_zone(rect)             # absolute-coord rect
+        self.update()
+
+    def keyPressEvent(self, e):
+        if e.key() == Qt.Key.Key_Escape:
+            self._finish()
+
+    def _finish(self):
+        cb, self._on_done = self._on_done, None
+        self.close()
+        if cb is not None:
+            cb()
+
+    def closeEvent(self, e):
+        if self._on_done is not None:
+            cb, self._on_done = self._on_done, None
+            cb()
+        super().closeEvent(e)
+
+    def paintEvent(self, _e):
+        from PyQt6.QtGui import QPainter, QColor
+        p = QPainter(self)
+        ox, oy = self._origin.x(), self._origin.y()
+        fill = QColor(220, 60, 50, 70)
+        edge = QColor(220, 60, 50, 160)
+        for z in self._zones:
+            p.fillRect(int(z["x"] - ox), int(z["y"] - oy), int(z["w"]), int(z["h"]), fill)
+            p.setPen(edge)
+            p.drawRect(int(z["x"] - ox), int(z["y"] - oy), int(z["w"]), int(z["h"]))
+        if self._drag is not None:
+            x0, y0, x1, y1 = self._drag
+            p.fillRect(int(min(x0, x1)), int(min(y0, y1)),
+                       int(abs(x1 - x0)), int(abs(y1 - y0)), fill)
+        p.end()
+
+
 class Pet(QWidget):
     def __init__(self, session_id="default", host="unknown", claude_pid=0):
         super().__init__()
@@ -371,6 +453,7 @@ class Pet(QWidget):
         cfg = petconfig.load_config()
         self._roam_area = cfg.get("roam_area")
         self._no_go = cfg.get("no_go") or []
+        self._zone_overlay = None            # open ZoneOverlay widget, or None
         _pal = os.environ.get("CLAUDLET_PALETTE") or cfg.get("palette", "auto")
         _rng = random.Random()
         self._palette = petconfig.resolve_palette(_pal, _rng.random(), _rng.random())
@@ -1710,6 +1793,13 @@ class Pet(QWidget):
             a_comp_del = QAction(self.ui["comp_del"], m)
             m.addAction(a_comp_del)
         m.addSeparator()
+        a_zone_edit = QAction(self.ui["zone_edit"], m)
+        m.addAction(a_zone_edit)
+        a_zone_clear = None
+        if self._no_go:
+            a_zone_clear = QAction(self.ui["zone_clear"], m)
+            m.addAction(a_zone_clear)
+        m.addSeparator()
         a_quit = QAction(self.ui["quit"], m)
         m.addAction(a_quit)
         chosen = m.exec(gpos)
@@ -1730,6 +1820,10 @@ class Pet(QWidget):
             self._spawn_test_companion(+1)
         elif a_comp_del is not None and chosen == a_comp_del:
             self._spawn_test_companion(-1)
+        elif chosen == a_zone_edit:
+            self._enter_zone_edit()
+        elif a_zone_clear is not None and chosen == a_zone_clear:
+            self._clear_zones()
         elif chosen == a_quit:
             self._quit()
 
@@ -1762,6 +1856,24 @@ class Pet(QWidget):
     def _play_motion(self, name, dur=2.5):
         # reuse the same path as a socket motion command (menu is in-process)
         self._handle_event({"cmd": "motion", "motion": name, "dur": dur})
+
+    def _enter_zone_edit(self):
+        if self._zone_overlay is not None:
+            return
+        def _add(rect):
+            self._no_go.append(rect)
+        def _done():
+            self._zone_overlay = None
+        self._zone_overlay = ZoneOverlay(self.screen_rect, self._no_go, _add, _done)
+        self._zone_overlay.show()
+        self._zone_overlay.raise_()
+        self._zone_overlay.activateWindow()
+
+    def _clear_zones(self):
+        self._no_go = []
+        if self._zone_overlay is not None:
+            self._zone_overlay._zones = []
+            self._zone_overlay.update()
 
     def _toggle_float(self):
         # off -> clear (restores gravity); on -> float mode
