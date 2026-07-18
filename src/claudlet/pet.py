@@ -654,6 +654,33 @@ class Pet(QWidget):
     def _is_focused(self):
         return focus.terminal_focused(self.host_classes)
 
+    def snapshot(self):
+        """Read-only view of what the pet is currently *displaying*.
+
+        This is the pet's stable observation surface: tests assert against
+        this dict instead of reaching into private attributes, so an internal
+        rename (e.g. ``_render_state`` -> something) ripples into this one
+        method rather than across the whole suite. Keys are observable facts —
+        logical/painted state, physics mode, active toggles, containment and
+        companion counts — not internal physics scratch (vx/vy/timers)."""
+        return {
+            "state": self.claude_state,                       # engine's logical state
+            "render": getattr(self, "_render_state", self.claude_state),  # painted state
+            "mode": self.mode,                                # roam | held | thrown
+            "facing": self.facing,                            # 1 right, -1 left
+            "motion": self._motion,                           # forced motion or None
+            "floating": self._floating,
+            "following": self._follow,
+            "contained": self._contain.wid if self._contain else None,
+            "companions": len(self._companions),
+            "departing": len(self._departing),
+            "quit_armed": self._quit_timer is not None,       # SessionEnd quit pending
+            "palette": self._palette,
+            "hidden": self._hidden_for_win,                   # occluded away entirely
+            "masked": self._masked,                           # clipped to exposed sliver
+            "no_go": len(self._no_go),
+        }
+
     # ---------- main loop ----------
     def _tick(self):
         self.frame += 1

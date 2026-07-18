@@ -1,13 +1,20 @@
-import sys, os, time, socket, types
+import sys, os, time, types
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt, QPoint
 from claudlet import pet as P
 from claudlet import roambounds
 from claudlet.core import hostinfo
 from claudlet.core import idle_engine
 
-_app = QApplication.instance() or QApplication(sys.argv)
+# The black-box harness: `pet` (offscreen fixture, auto-cleanup), send_hook
+# (deliver a hook line over the pet's REAL socket), ping (liveness probe). The
+# reactive-core tests drive the pet through these and observe pet.snapshot(),
+# so an internal rename touches harness.py / Pet.snapshot(), not this file. The
+# physics/window tests below still set world state through private hooks (there
+# is no public geometry-feed injection) — that is the acknowledged ceiling.
+from harness import pet, send_hook, ping  # noqa: F401  (`pet` used as a fixture)
+
+# harness.py already created the single QApplication; nothing more to do here.
 
 
 class _LeftRelease:
@@ -15,34 +22,20 @@ class _LeftRelease:
         return Qt.MouseButton.LeftButton
 
 
-def test_pet_constructs_and_uses_engine():
-    p = P.Pet()
-    assert hasattr(p, "engine")
-    # feed a PreToolUse and confirm the engine drives the claude state
-    p._handle_event({"event": "PreToolUse", "session": "a", "tool_name": "Bash"})
-    p._tick()
-    assert p.claude_state == "work_computer"
-    p._cleanup()
+def test_pet_constructs_and_uses_engine(pet):
+    assert hasattr(pet, "engine")
+    # a PreToolUse arriving over the real socket drives the displayed state
+    send_hook(pet, "PreToolUse", session="a", tool_name="Bash")
+    pet._tick()
+    assert pet.snapshot()["state"] == "work_computer"
 
 
-def test_pet_answers_liveness_ping():
+def test_pet_answers_liveness_ping(pet):
     # the pet must reply to {"cmd":"ping"} with its banner so hostinfo.pet_alive
     # can tell a real pet apart from an unrelated process on a reused stale port.
-    p = P.Pet(session_id="ping1")
-    try:
-        port = p.srv.getsockname()[1]
-        c = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        c.settimeout(1.0)
-        c.connect((hostinfo.LOOPBACK, port))
-        c.sendall(hostinfo.PING)
-        c.shutdown(socket.SHUT_WR)
-        p._on_conn()                      # simulate the QSocketNotifier firing
-        reply = c.recv(256).decode()
-        c.close()
-        assert hostinfo.BANNER_MARK in reply
-        assert p._quit_timer is None      # a ping is NOT a Claude event
-    finally:
-        p._cleanup()
+    reply = ping(pet)
+    assert hostinfo.BANNER_MARK in reply
+    assert pet.snapshot()["quit_armed"] is False   # a ping is NOT a Claude event
 
 
 def test_companion_follows_when_far_and_stops_when_near():
@@ -334,19 +327,19 @@ def test_spawn_test_companion_override(monkeypatch):
     p = P.Pet(session_id="dbgcomp")
     try:
         monkeypatch.setattr(p.engine, "agents_active", lambda: 0)
-        assert p._companions == []
+        assert p.snapshot()["companions"] == 0
         p._spawn_test_companion(+1)
-        assert len(p._companions) == 1 and p._companion.isVisible()
+        assert p.snapshot()["companions"] == 1 and p._companion.isVisible()
         for _ in range(P.COMPANION_MAX + 3):
             p._spawn_test_companion(+1)
-        assert len(p._companions) == P.COMPANION_MAX      # clamped
+        assert p.snapshot()["companions"] == P.COMPANION_MAX      # clamped
         p._spawn_test_companion(-1)                       # removed one -> waves bye
-        assert len(p._companions) == P.COMPANION_MAX - 1
+        assert p.snapshot()["companions"] == P.COMPANION_MAX - 1
         # a real agent adds on top of the override count
         monkeypatch.setattr(p.engine, "agents_active",
                             lambda: P.COMPANION_MAX)
         p._sync_companion()
-        assert len(p._companions) == P.COMPANION_MAX
+        assert p.snapshot()["companions"] == P.COMPANION_MAX
     finally:
         p._cleanup()
 
@@ -379,12 +372,12 @@ def test_companion_waves_goodbye_then_closes(monkeypatch):
         c = p._companion
         active["n"] = 0
         p._sync_companion()
-        assert p._companions == [] and p._departing == [c]
+        assert p.snapshot()["companions"] == 0 and p._departing == [c]
         assert c._state == "celebrate" and c.isVisible()   # announcing the finish
         monkeypatch.setattr(P, "COMPANION_BYE_DUR", 0.0)   # not for the deadline set above
         c._depart_until = 0.0                              # force the deadline past
         p._sync_companion()
-        assert p._departing == []                          # closed and removed
+        assert p.snapshot()["departing"] == 0              # closed and removed
     finally:
         p._cleanup()
 
@@ -418,27 +411,25 @@ def test_companion_chain_grows_with_agents_and_caps(monkeypatch):
         active = {"n": 2}
         monkeypatch.setattr(p.engine, "agents_active", lambda: active["n"])
         p._sync_companion()
-        assert len(p._companions) == 2
+        assert p.snapshot()["companions"] == 2
         active["n"] = 7                        # more agents than the cap
         p._sync_companion()
-        assert len(p._companions) == P.COMPANION_MAX
+        assert p.snapshot()["companions"] == P.COMPANION_MAX
         active["n"] = 1                        # agents finished -> chain shrinks
         p._sync_companion()
-        assert len(p._companions) == 1
+        assert p.snapshot()["companions"] == 1
     finally:
         p._cleanup()
 
 
-def test_pet_quit_command_triggers_shutdown():
+def test_pet_quit_command_triggers_shutdown(pet):
     # claudlet-uninstall broadcasts {"cmd":"quit"} to tear pets down. The pet
     # must treat it as a shutdown request (clean _quit), NOT feed it to the
     # state engine like a Claude event.
-    p = P.Pet(session_id="quitcmd")
     called = []
-    p._quit = lambda: called.append(True)
-    p._handle_event({"cmd": "quit"})
+    pet._quit = lambda: called.append(True)
+    send_hook(pet, cmd="quit")
     assert called == [True]
-    p._cleanup()
 
 
 def test_pid_alive_posix_and_windows(monkeypatch):
@@ -525,15 +516,11 @@ def test_pet_is_session_and_host_aware():
         p._cleanup()
 
 
-def test_sessionend_quit_is_cancelled_by_later_event():
-    p = P.Pet(session_id="q1")
-    try:
-        p._handle_event({"event": "SessionEnd", "session": "q1"})
-        assert p._quit_timer is not None          # quit armed
-        p._handle_event({"event": "UserPromptSubmit", "session": "q1"})
-        assert p._quit_timer is None              # a later event cancels it
-    finally:
-        p._cleanup()
+def test_sessionend_quit_is_cancelled_by_later_event(pet):
+    send_hook(pet, "SessionEnd", session="q1")
+    assert pet.snapshot()["quit_armed"] is True       # quit armed
+    send_hook(pet, "UserPromptSubmit", session="q1")
+    assert pet.snapshot()["quit_armed"] is False      # a later event cancels it
 
 
 def test_visibility_hides_with_ridden_window():
@@ -548,15 +535,15 @@ def test_visibility_hides_with_ridden_window():
         # ridden window fully covered -> hide
         p._wins = [host, top]
         p._update_visibility()
-        assert p._hidden_for_win is True
+        assert p.snapshot()["hidden"] is True
         # covering window gone -> show
         p._wins = [host]
         p._update_visibility()
-        assert p._hidden_for_win is False
+        assert p.snapshot()["hidden"] is False
         # ridden window minimized/closed (drops from the feed) -> hide
         p._wins = []
         p._update_visibility()
-        assert p._hidden_for_win is True
+        assert p.snapshot()["hidden"] is True
     finally:
         p._cleanup()
 
@@ -573,12 +560,12 @@ def test_visibility_partial_cover_masks():
         cover = W.Win("cov", 60, 0, 400, 300, "code", 2)
         p._wins = [host, cover]
         p._update_visibility()
-        assert p._hidden_for_win is False     # still partly visible
-        assert p._masked is True              # clipped to the exposed sliver
+        assert p.snapshot()["hidden"] is False     # still partly visible
+        assert p.snapshot()["masked"] is True              # clipped to the exposed sliver
         # cover removed -> full again, mask dropped
         p._wins = [host]
         p._update_visibility()
-        assert p._masked is False
+        assert p.snapshot()["masked"] is False
     finally:
         p._cleanup()
 
@@ -595,12 +582,14 @@ def test_visibility_perched_on_top_not_clipped_by_its_window():
         p._wins = [X]
         p._update_visibility()
         # standing ON TOP of X with nothing above -> body must NOT be clipped
-        assert p._hidden_for_win is False and p._masked is False
+        snap = p.snapshot()
+        assert snap["hidden"] is False and snap["masked"] is False
         # a window raised above X, over the pet's body -> now occluded
         Y = W.Win("Y", 0, 300, 800, 400, "code", 2)
         p._wins = [X, Y]
         p._update_visibility()
-        assert p._masked is True or p._hidden_for_win is True
+        snap = p.snapshot()
+        assert snap["masked"] is True or snap["hidden"] is True
     finally:
         p._cleanup()
 
@@ -614,7 +603,7 @@ def test_visibility_desktop_never_hides():
         p.x, p.y = 100.0, 100.0
         p._wins = [W.Win("big", 0, 0, 4000, 2000, "code", 2)]   # maximized window exists
         p._update_visibility()
-        assert p._hidden_for_win is False         # not perched on it -> stays visible
+        assert p.snapshot()["hidden"] is False         # not perched on it -> stays visible
     finally:
         p._cleanup()
 
@@ -627,7 +616,7 @@ def test_visibility_off_without_feed():
         p._contain = W.Win("host", 100, 100, 400, 300, "x", 1)
         p._wins = []                              # would hide if the feed were active
         p._update_visibility()
-        assert p._hidden_for_win is False
+        assert p.snapshot()["hidden"] is False
     finally:
         p._cleanup()
 
@@ -662,41 +651,32 @@ def test_roam_falls_when_surface_dropped_away():
         p._cleanup()
 
 
-def test_motion_command_overrides_render_state():
-    p = P.Pet(session_id="m1")
-    try:
-        p._handle_event({"cmd": "motion", "motion": "jump", "dur": 2.0})
-        assert p._motion == "jump"
-        p.mode = "roam"
-        p._tick()
-        assert p._render_state == "jump"
-    finally:
-        p._cleanup()
+def test_motion_command_overrides_render_state(pet):
+    send_hook(pet, cmd="motion", motion="jump", dur=2.0)
+    assert pet.snapshot()["motion"] == "jump"
+    pet.mode = "roam"
+    pet._tick()
+    assert pet.snapshot()["render"] == "jump"
 
 
-def test_motion_command_does_not_cancel_quit_timer():
-    p = P.Pet(session_id="m2")
-    try:
-        p._handle_event({"event": "SessionEnd", "session": "m2"})
-        assert p._quit_timer is not None
-        p._handle_event({"cmd": "motion", "motion": "wave", "dur": 1.0})
-        assert p._quit_timer is not None      # a motion cmd is NOT a Claude event
-        assert p._motion == "wave"
-    finally:
-        p._cleanup()
+def test_motion_command_does_not_cancel_quit_timer(pet):
+    send_hook(pet, "SessionEnd", session="m2")
+    assert pet.snapshot()["quit_armed"] is True
+    send_hook(pet, cmd="motion", motion="wave", dur=1.0)
+    snap = pet.snapshot()
+    assert snap["quit_armed"] is True     # a motion cmd is NOT a Claude event
+    assert snap["motion"] == "wave"
 
 
-def test_float_toggle_and_stop_restores_gravity():
-    p = P.Pet(session_id="m3")
-    try:
-        p._handle_event({"cmd": "motion", "motion": "float", "dur": 0})
-        assert p._floating is True
-        assert p._motion is None          # float is a mode, not a render override
-        p._handle_event({"cmd": "motion", "motion": None, "dur": 0})
-        assert p._floating is False
-        assert p.mode == "thrown"         # stop restores gravity
-    finally:
-        p._cleanup()
+def test_float_toggle_and_stop_restores_gravity(pet):
+    send_hook(pet, cmd="motion", motion="float", dur=0)
+    snap = pet.snapshot()
+    assert snap["floating"] is True
+    assert snap["motion"] is None         # float is a mode, not a render override
+    send_hook(pet, cmd="motion", motion=None, dur=0)
+    snap = pet.snapshot()
+    assert snap["floating"] is False
+    assert snap["mode"] == "thrown"       # stop restores gravity
 
 
 def test_float_rises_and_hovers_without_falling():
@@ -704,7 +684,7 @@ def test_float_rises_and_hovers_without_falling():
     try:
         p.mode = "roam"
         p.y = float(p.floor_y)
-        p._handle_event({"cmd": "motion", "motion": "float", "dur": 0})
+        send_hook(p, cmd="motion", motion="float", dur=0)
         # rose off the floor, velocity killed, still roam (so hovering engages)
         assert p.y < p.floor_y
         assert p.vy == 0.0 and p.mode == "roam"
@@ -721,13 +701,13 @@ def test_menu_helpers_play_motion_and_toggle_float():
     p = P.Pet(session_id="m6")
     try:
         p._play_motion("jump", 2.0)
-        assert p._motion == "jump"
+        assert p.snapshot()["motion"] == "jump"
         # float toggle flips on, then off (off restores gravity)
-        assert p._floating is False
+        assert p.snapshot()["floating"] is False
         p._toggle_float()
-        assert p._floating is True
+        assert p.snapshot()["floating"] is True
         p._toggle_float()
-        assert p._floating is False and p.mode == "thrown"
+        assert p.snapshot()["floating"] is False and p.mode == "thrown"
     finally:
         p._cleanup()
 
@@ -735,9 +715,9 @@ def test_menu_helpers_play_motion_and_toggle_float():
 def test_follow_toggle_and_tick_glides_toward_cursor():
     p = P.Pet(session_id="m7")
     try:
-        assert p._follow is False
+        assert p.snapshot()["following"] is False
         p._toggle_follow()
-        assert p._follow is True
+        assert p.snapshot()["following"] is True
         # place the pet far from the cursor; ticking must glide it toward the
         # cursor (position changes) and stay within the desktop, without crashing
         p.mode = "roam"
@@ -748,7 +728,7 @@ def test_follow_toggle_and_tick_glides_toward_cursor():
         assert (p.x, p.y) != start
         assert p.screen_rect.left() <= p.x <= p.screen_rect.right()
         p._toggle_follow()
-        assert p._follow is False
+        assert p.snapshot()["following"] is False
     finally:
         p._cleanup()
 
@@ -814,7 +794,7 @@ def test_follow_strain_hops_when_cursor_unreachably_above():
         petcx = p.x + p.w / 2.0
         p._on_cursor(f"{int(petcx)},{int(p.y) - 400}")   # aligned, far above -> unreachable
         p._tick()
-        assert p._render_state == "strain"
+        assert p.snapshot()["render"] == "strain"
         assert p.mode != "thrown", "unreachable above must not launch a doomed arc"
     finally:
         p._cleanup()
@@ -838,7 +818,7 @@ def test_follow_strains_when_cursor_above_but_beyond_jump_reach():
         p._wins = [win]
         p._on_cursor(f"{int(petcx)},{int(wy) - 30}")     # aligned, above it
         p._tick()
-        assert p._render_state == "strain"
+        assert p.snapshot()["render"] == "strain"
         assert p.mode != "thrown", "beyond reach must strain, not launch a doomed arc"
     finally:
         p._cleanup()
@@ -865,7 +845,7 @@ def test_follow_jumps_onto_small_step_above():
         # in flight the pose must be the STEADY leap -- the in-place "jump"
         # motion bobs ~27px on its own, which fights the ballistic movement
         # and reads as stutter.
-        assert p._render_state == "leap"
+        assert p.snapshot()["render"] == "leap"
         for _ in range(300):
             p._tick()
             if p.mode != "thrown":
@@ -891,7 +871,7 @@ def test_follow_enters_floor_level_window_under_cursor():
         p._wins = [win]
         p._on_cursor(f"450,{int(sb - 200)}")             # inside the window
         p._tick()
-        assert p._contain is not None and p._contain.wid == "w1"
+        assert p.snapshot()["contained"] == "w1"
     finally:
         p._cleanup()
 
@@ -918,7 +898,7 @@ def test_follow_jumps_into_panel_gap_window_and_gets_contained():
             if p.mode != "thrown":
                 break
         assert p.mode == "roam"
-        assert p._contain is not None and p._contain.wid == "w1"
+        assert p.snapshot()["contained"] == "w1"
     finally:
         p._cleanup()
 
@@ -945,7 +925,7 @@ def test_follow_descent_lands_clean_without_bouncing():
             p._tick()
             if p.mode == "thrown":
                 # "climbdown" lingers on the guard-fire transition tick
-                assert p._render_state in ("jump", "climbdown"), \
+                assert p.snapshot()["render"] in ("jump", "climbdown"), \
                     "descent must not tumble"
             if p.y >= floor_y - 1:
                 touched = True
@@ -974,12 +954,12 @@ def test_follow_exit_below_contained_window_climbs_down_not_jumps():
         p.x, p.y = 340.0, float(floor)                   # standing inside
         p._on_cursor(f"400,{sb - 10}")                   # floor below, outside
         p._tick()
-        assert p._render_state == "climbdown"
-        assert p._contain is None, "climbing out must release containment"
+        assert p.snapshot()["render"] == "climbdown"
+        assert p.snapshot()["contained"] is None, "climbing out must release containment"
         for _ in range(300):
             p._tick()
             if p.mode == "thrown":
-                assert p._render_state == "climbdown", \
+                assert p.snapshot()["render"] == "climbdown", \
                     "a straight-down exit must not use the jump pose"
             elif p.y >= float(p.floor_y) - 1:
                 break
@@ -1015,7 +995,7 @@ def test_follow_jump_lands_without_post_shuffle():
         assert p.mode == "roam"
         landed_x = p.x
         p._tick()
-        assert p._render_state != "walk", "post-landing correction shuffle"
+        assert p.snapshot()["render"] != "walk", "post-landing correction shuffle"
         assert p.x == landed_x
     finally:
         p._cleanup()
@@ -1044,7 +1024,7 @@ def test_follow_gap_jump_lands_and_enters_target_window():
             if p.mode != "thrown":
                 break
         assert p.mode == "roam"
-        assert p._contain is not None and p._contain.wid == "w2"
+        assert p.snapshot()["contained"] == "w2"
     finally:
         p._cleanup()
 
@@ -1066,7 +1046,7 @@ def test_follow_climbs_down_when_cursor_below_on_window():
         petcx = p.x + p.w / 2.0
         p._on_cursor(f"{int(petcx)},{int(p.y) + P.FOOT_Y + 100}")   # aligned, well below
         p._tick()
-        assert p._render_state == "climbdown"
+        assert p.snapshot()["render"] == "climbdown"
         assert p.mode != "thrown", "first tick should descend in place, not free-fall"
     finally:
         p._cleanup()
@@ -1090,13 +1070,13 @@ def test_work_search_anchors_locally_and_clears():
     p = P.Pet(session_id="ws")
     try:
         p.mode = "roam"
-        p._handle_event({"event": "PreToolUse", "session": "ws", "tool_name": "Grep"})
+        send_hook(p, "PreToolUse", session="ws", tool_name="Grep")
         p._tick()
-        assert p.claude_state == "work_search"
+        assert p.snapshot()["state"] == "work_search"
         assert p._search_anchor is not None          # anchored on entering search
         # leaving search clears the anchor so the next episode re-anchors
-        p._handle_event({"event": "UserPromptSubmit", "session": "ws"})
-        p._handle_event({"cmd": "motion", "motion": None})   # ensure not floating
+        send_hook(p, "UserPromptSubmit", session="ws")
+        send_hook(p, cmd="motion", motion=None)      # ensure not floating
         for _ in range(3):
             p._tick()
         if p.claude_state != "work_search":
@@ -1157,7 +1137,7 @@ def test_floating_follow_tracks_x_and_y():
             p._tick()
         # unlike grounded follow (x only), floating follow also moves in y
         assert p.y != start_y
-        assert p._render_state == "float"
+        assert p.snapshot()["render"] == "float"
     finally:
         p._cleanup()
 
@@ -1175,7 +1155,7 @@ def test_fling_inside_window_bounces_within_it():
         p._vel_samples = [(now, QPoint(0, 0)), (now + 0.02, QPoint(60, 0))]
         p.mouseReleaseEvent(_LeftRelease())
         assert p.mode == "thrown"        # thrown -> bounces off the interior
-        assert p._contain is not None    # but stays inside the window
+        assert p.snapshot()["contained"] is not None    # but stays inside the window
     finally:
         p._cleanup()
 
@@ -1192,7 +1172,7 @@ def test_gentle_drop_on_window_perches():
         # slow drop: 2px over 0.1s -> below the fling threshold
         p._vel_samples = [(now, QPoint(0, 0)), (now + 0.1, QPoint(2, 0))]
         p.mouseReleaseEvent(_LeftRelease())
-        assert p._contain is not None    # settled into the window
+        assert p.snapshot()["contained"] is not None    # settled into the window
         assert p.mode == "roam"
     finally:
         p._cleanup()
@@ -1210,28 +1190,25 @@ def test_drag_centre_out_of_window_leaves_it():
         now = time.monotonic()
         p._vel_samples = [(now, QPoint(0, 0)), (now + 0.1, QPoint(1, 0))]
         p.mouseReleaseEvent(_LeftRelease())
-        assert p._contain is None        # left the window
+        assert p.snapshot()["contained"] is None        # left the window
         assert p.mode == "thrown"
     finally:
         p._cleanup()
 
 
-def test_float_still_shows_claude_animation():
-    p = P.Pet(session_id="m5")
-    try:
-        # a working Claude state while floating should still render as working,
-        # not be masked by the float mode
-        p._handle_event({"event": "PreToolUse", "session": "m5", "tool_name": "Bash"})
-        p._handle_event({"cmd": "motion", "motion": "float", "dur": 0})
-        p._tick()
-        assert p._floating is True
-        assert p._render_state == "work_computer"   # animation NOT masked by float
-        # and a transient motion still plays over the float
-        p._handle_event({"cmd": "motion", "motion": "jump", "dur": 2.0})
-        p._tick()
-        assert p._render_state == "jump"
-    finally:
-        p._cleanup()
+def test_float_still_shows_claude_animation(pet):
+    # a working Claude state while floating should still render as working,
+    # not be masked by the float mode
+    send_hook(pet, "PreToolUse", session="m5", tool_name="Bash")
+    send_hook(pet, cmd="motion", motion="float", dur=0)
+    pet._tick()
+    snap = pet.snapshot()
+    assert snap["floating"] is True
+    assert snap["render"] == "work_computer"   # animation NOT masked by float
+    # and a transient motion still plays over the float
+    send_hook(pet, cmd="motion", motion="jump", dur=2.0)
+    pet._tick()
+    assert pet.snapshot()["render"] == "jump"
 
 
 def test_companion_survives_backgrounded_subagent_lifecycle():
@@ -1240,25 +1217,25 @@ def test_companion_survives_backgrounded_subagent_lifecycle():
     # -- with the goodbye wave -- once the work truly finishes.
     p = P.Pet(session_id="bg")
     try:
-        p._handle_event({"event": "PreToolUse", "session": "bg", "tool_name": "Agent"})
+        send_hook(p, "PreToolUse", session="bg", tool_name="Agent")
         p._tick()
-        assert len(p._companions) == 1                       # dispatched -> appears
+        assert p.snapshot()["companions"] == 1               # dispatched -> appears
 
         # yielded, but background_tasks still shows work running
-        p._handle_event({"event": "SubagentStop", "session": "bg",
-                         "bg_agents": 0, "bg_tasks": 1})
+        send_hook(p, "SubagentStop", session="bg", bg_agents=0, bg_tasks=1)
         p._tick()
-        assert len(p._companions) == 1                       # stays (was the bug)
-        assert p._departing == []
+        snap = p.snapshot()
+        assert snap["companions"] == 1                       # stays (was the bug)
+        assert snap["departing"] == 0
         assert p.engine.agent_state() == "idle"              # waits idle
 
         # work truly finished -> empty snapshot. NOT gone yet: it lingers for
         # the depart grace so it trails Claude Code's UI instead of leading it.
-        p._handle_event({"event": "SubagentStop", "session": "bg",
-                         "bg_agents": 0, "bg_tasks": 0})
+        send_hook(p, "SubagentStop", session="bg", bg_agents=0, bg_tasks=0)
         p._tick()
-        assert len(p._companions) == 1                       # grace: still around
-        assert p._departing == []
+        snap = p.snapshot()
+        assert snap["companions"] == 1                       # grace: still around
+        assert snap["departing"] == 0
 
         # ...then, once the grace has passed (backdate the timer rather than
         # sleep), it departs with the goodbye wave.
@@ -1266,8 +1243,9 @@ def test_companion_survives_backgrounded_subagent_lifecycle():
         p.engine.sessions["bg"].agent_gone_since = (
             time.monotonic() - SE.COMPANION_DEPART_GRACE - 1.0)
         p._tick()
-        assert p._companions == []
-        assert len(p._departing) == 1                        # waving goodbye, not vanished
+        snap = p.snapshot()
+        assert snap["companions"] == 0
+        assert snap["departing"] == 1                        # waving goodbye, not vanished
     finally:
         p._cleanup()
 
@@ -1284,7 +1262,7 @@ def test_companion_spawns_without_overlapping_pet():
         # logic, so give it room on both sides.
         left, right, _t, _f = p._bounds()
         p.x = (left + right) / 2.0
-        p._handle_event({"event": "PreToolUse", "session": "spawn", "tool_name": "Agent"})
+        send_hook(p, "PreToolUse", session="spawn", tool_name="Agent")
         p._tick()
         c = p._companions[0]
         overlap = not (c.x + c.w <= p.x or c.x >= p.x + p.w)
@@ -1346,14 +1324,14 @@ def test_no_rest_poses_during_autopilot():
         p.idle_energy.value = 0.05             # force LOW
         # WebFetch under an autonomous permission mode -> engine reports auto_web
         # (AUTO_VARIANT["work_web"]), which is in AUTO_ROAM -> _roam runs for it.
-        p._handle_event({"event": "PreToolUse", "session": "nrg3",
-                          "tool_name": "WebFetch", "permission_mode": "auto"})
+        send_hook(p, "PreToolUse", session="nrg3",
+                  tool_name="WebFetch", permission_mode="auto")
         p.mode = "roam"
         seen = set()
         for _ in range(400):
             p._tick()
             seen.add(p._idle_behavior)
-        assert p.claude_state == "auto_web"
+        assert p.snapshot()["state"] == "auto_web"
         assert not (seen & idle_engine.RESTING)
     finally:
         p._cleanup()
@@ -1449,7 +1427,7 @@ def test_explore_jump_enters_targeted_window_midflight():
         p._follow_jump = True
         p.vx, p.vy = 0.0, 1.0
         p._physics()
-        assert p._contain is not None and p._contain.wid == "W1"
+        assert p.snapshot()["contained"] == "W1"
     finally:
         p._cleanup()
 
@@ -1486,7 +1464,7 @@ def test_vacate_leaves_window_when_fully_zoned():
         # a no-go zone covering the whole window interior at the pet's foot band
         p._no_go = [{"x": win.x, "y": win.y, "w": win.w, "h": win.h}]
         p._vacate_if_trapped(floor)
-        assert p._contain is None            # left the window
+        assert p.snapshot()["contained"] is None            # left the window
         assert p.mode == "thrown"            # falling to whatever is below
     finally:
         p._cleanup()
@@ -1501,6 +1479,8 @@ def test_vacate_noop_when_not_blocked():
         p._no_go = [{"x": 1500.0, "y": 300.0, "w": 100.0, "h": 200.0}]   # far away
         floor = win.y + win.h - p.h
         p._vacate_if_trapped(floor)
+        # object identity, not wid-equality: a no-op must leave the EXACT same
+        # containment untouched (snapshot only exposes the wid, so read direct).
         assert p._contain is win             # stays put
     finally:
         p._cleanup()
