@@ -1277,6 +1277,13 @@ def test_companion_spawns_without_overlapping_pet():
     # (same x). It must spawn clear of the pet's body, then ease into the chain.
     p = P.Pet(session_id="spawn")
     try:
+        # anchor away from screen edges -- Pet() spawns at a random x, and near
+        # an edge the companion's on-screen clamp (pet.py's _sync_companion)
+        # can legitimately land it back on top of the pet. That's a separate,
+        # pre-existing edge case; this test is about the normal spawn-offset
+        # logic, so give it room on both sides.
+        left, right, _t, _f = p._bounds()
+        p.x = (left + right) / 2.0
         p._handle_event({"event": "PreToolUse", "session": "spawn", "tool_name": "Agent"})
         p._tick()
         c = p._companions[0]
@@ -1464,5 +1471,14 @@ def test_roam_stays_out_of_no_go():
         for _ in range(30):
             p._tick()
         assert not roambounds.blocks_target(p.x, p.w, p.y + P.FOOT_Y, p._no_go)
+    finally:
+        p._cleanup()
+
+
+def test_env_forces_palette(monkeypatch):
+    monkeypatch.setenv("CLAUDLET_PALETTE", "shiny_violet")
+    p = P.Pet(session_id="pal")
+    try:
+        assert p._palette == "shiny_violet"
     finally:
         p._cleanup()

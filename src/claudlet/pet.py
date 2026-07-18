@@ -371,6 +371,8 @@ class Pet(QWidget):
         cfg = petconfig.load_config()
         self._roam_area = cfg.get("roam_area")
         self._no_go = cfg.get("no_go") or []
+        _pal = os.environ.get("CLAUDLET_PALETTE") or cfg.get("palette", "auto")
+        self._palette = petconfig.resolve_palette(_pal, random.random(), random.random())
         self.engine = StateEngine(is_focused=self._is_focused,
                                   tool_states=cfg["tool_states"],
                                   event_states=cfg["event_states"],
@@ -1600,7 +1602,8 @@ class Pet(QWidget):
             state not in AUTO_STATES else None
         # facing handled inside draw_creature (body mirrors, text upright)
         C.draw_creature(p, PAD_X * U, PAD_Y * U, U, state, self.frame,
-                        facing=self.facing, visor=vis, energy=self.idle_energy.value)
+                        facing=self.facing, visor=vis, energy=self.idle_energy.value,
+                        palette=self._palette)
         p.end()
 
     # ---------- interaction ----------
