@@ -10,7 +10,8 @@ def _write(tmp, obj):
     return p
 
 
-EMPTY = {"tool_states": {}, "event_states": {}, "raw_events": {}, "lang": "auto"}
+EMPTY = {"tool_states": {}, "event_states": {}, "raw_events": {}, "lang": "auto",
+         "roam_area": None, "no_go": []}
 
 
 def test_valid_overrides_kept():
@@ -74,3 +75,31 @@ def test_resolve_lang(monkeypatch):
     assert petconfig.resolve_lang("auto") == "ko"
     monkeypatch.setenv("LANG", "en_US.UTF-8")
     assert petconfig.resolve_lang("auto") == "en"
+
+
+def test_roam_area_parsed():
+    with tempfile.TemporaryDirectory() as tmp:
+        cfg = petconfig.load_config(_write(tmp, {"roam_area": {"x": 0, "y": 0, "w": 800, "h": 600}}))
+        assert cfg["roam_area"] == {"x": 0.0, "y": 0.0, "w": 800.0, "h": 600.0}
+
+
+def test_roam_area_invalid_dropped():
+    with tempfile.TemporaryDirectory() as tmp:
+        cfg = petconfig.load_config(_write(tmp, {"roam_area": {"x": 0, "y": 0, "w": -5, "h": 600}}))
+        assert cfg["roam_area"] is None
+
+
+def test_no_go_filters_invalid():
+    with tempfile.TemporaryDirectory() as tmp:
+        cfg = petconfig.load_config(_write(tmp, {"no_go": [
+            {"x": 1, "y": 2, "w": 3, "h": 4},
+            {"x": 1, "y": 2, "w": 0, "h": 4},      # w<=0 dropped
+            "nonsense",                             # non-dict dropped
+        ]}))
+        assert cfg["no_go"] == [{"x": 1.0, "y": 2.0, "w": 3.0, "h": 4.0}]
+
+
+def test_roam_keys_default_absent():
+    with tempfile.TemporaryDirectory() as tmp:
+        cfg = petconfig.load_config(_write(tmp, {}))
+        assert cfg["roam_area"] is None and cfg["no_go"] == []

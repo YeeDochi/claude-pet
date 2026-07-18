@@ -50,8 +50,27 @@ def _clean(raw):
     lang = raw.get("lang")
     if lang not in ("ko", "en", "auto"):
         lang = "auto"
+
+    def _rect(v):
+        if not isinstance(v, dict):
+            return None
+        try:
+            x, y, w, h = float(v["x"]), float(v["y"]), float(v["w"]), float(v["h"])
+        except (KeyError, TypeError, ValueError):
+            return None
+        if w <= 0 or h <= 0:
+            return None
+        return {"x": x, "y": y, "w": w, "h": h}
+
+    roam_area = _rect(raw.get("roam_area"))
+    if not isinstance(raw.get("no_go"), list):
+        no_go = []
+    else:
+        no_go = [r for r in (_rect(z) for z in raw.get("no_go")) if r]
+
     return {"tool_states": tools, "event_states": events,
-            "raw_events": raw_events, "lang": lang}
+            "raw_events": raw_events, "lang": lang,
+            "roam_area": roam_area, "no_go": no_go}
 
 
 def _windows_locale():
@@ -88,8 +107,8 @@ def load_config(path=None):
             raw = json.load(f)
     except (OSError, ValueError):
         return {"tool_states": {}, "event_states": {}, "raw_events": {},
-                "lang": "auto"}
+                "lang": "auto", "roam_area": None, "no_go": []}
     if not isinstance(raw, dict):
         return {"tool_states": {}, "event_states": {}, "raw_events": {},
-                "lang": "auto"}
+                "lang": "auto", "roam_area": None, "no_go": []}
     return _clean(raw)
