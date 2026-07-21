@@ -26,8 +26,10 @@ All `bin/*` tools are Python, so they run wherever Python does.
 - **Drag** to pick it up and throw it — it falls with gravity and bounces. Fling it
   inside a window and it bounces off the interior walls; drag it out to leave.
 - **Left-click** — bring the Claude Code terminal/IDE to the front.
-- **Hover back-and-forth over it** to pet it — hearts pop and it grins. (Not while
-  it's asleep.)
+- **Hover back-and-forth over it** to pet it — hearts pop and it grins; even a
+  sleeping one perks up.
+- **Companions play together** — when idle with agent companions around, they
+  occasionally glance at each other, line up to rest, stack into a tower, or high-five.
 - **Right-click / tray** — menu: *커서 따라오기* (follow the cursor) · *모션* submenu
   (jump / wave / sing / juggle / celebrate) · *주머니 쏙* (pocket — tucks into a slit
   in the screen and peeks its head out, staying put and not covering your work) ·
