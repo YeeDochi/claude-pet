@@ -782,6 +782,13 @@ class Pet(QWidget):
                     self._screen_bottom_at(self.x + self.w / 2.0),
                     curx, cury)
                 self._apply_follow_intent(intent, left, right, floor)
+        elif self._social_active(now):
+            # 소셜 act 중엔 펫이 앵커로 정지(안 그러면 배회 때문에 대형이 흩어짐),
+            # 컴패니언 쪽을 바라봄. 하이파이브는 펫도 팔을 든다.
+            if self._companions:
+                ccx = sum(c.x + c.w / 2.0 for c in self._companions) / len(self._companions)
+                self.facing = 1 if ccx >= self.x + self.w / 2.0 else -1
+            self._render_state = "wave" if self._social_act == "highfive" else eff
         elif roaming:
             self._roam()
             # _roam's own push-out only guards its ENTRY into this tick; the

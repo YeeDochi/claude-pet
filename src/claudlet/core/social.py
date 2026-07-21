@@ -5,8 +5,8 @@ arrange로 각 컴패니언의 목표(위치/방향/포즈)를 받아 몰고 간
 """
 
 ACTS = ("glance", "lineup", "stack", "highfive")
-START_CHANCE = 0.02      # 적격 idle 틱당 발동 확률(~20fps에서 평균 수 초에 한 번)
-COOLDOWN = 8.0           # act 사이 최소 간격(초)
+START_CHANCE = 0.035     # 적격 idle 틱당 발동 확률(~20fps에서 평균 1~2초에 한 번 시도)
+COOLDOWN = 6.0           # act 사이 최소 간격(초)
 GAP = 6                  # 정렬/근접 간격(device px, pet.py가 넘김)
 DURATION = {"glance": 1.6, "lineup": 3.5, "stack": 3.5, "highfive": 2.0}
 
