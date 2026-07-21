@@ -26,8 +26,11 @@ All `bin/*` tools are Python, so they run wherever Python does.
 - **Drag** to pick it up and throw it — it falls with gravity and bounces. Fling it
   inside a window and it bounces off the interior walls; drag it out to leave.
 - **Left-click** — bring the Claude Code terminal/IDE to the front.
+- **Hover back-and-forth over it** to pet it — hearts pop and it grins. (Not while
+  it's asleep.)
 - **Right-click / tray** — menu: *커서 따라오기* (follow the cursor) · *모션* submenu
-  (jump / wave / sing / juggle / celebrate) · *둥둥 띄우기* (float, no-gravity toggle) ·
+  (jump / wave / sing / juggle / celebrate) · *주머니 쏙* (pocket — tucks into a slit
+  in the screen and peeks its head out, staying put and not covering your work) ·
   *quiet (mute)* · *quit*.
 - **Motions from the CLI/skill** — `/claudlet <motion>` (or
   `bin/claudlet-motion <motion>`): `jump`, `wave`, `sing`, `juggle`, `float`, plus
