@@ -1838,9 +1838,8 @@ class Pet(QWidget):
         self._press_global = None
 
     def _maybe_pet(self, x, now):
-        # 버튼 없는 호버 x를 링버퍼에 넣고, 왕복이면 하트 반응 발동. 자는 펫은 안 깨움.
-        if self.claude_state == "sleeping":
-            return
+        # 버튼 없는 호버 x를 링버퍼에 넣고, 왕복이면 하트 반응 발동. 어느 상태에서든
+        # (자는 중이어도 쓰다듬으면 하트 뜨며 방긋 — happy 눈이 감은 눈을 덮음).
         self._hover_samples = [(t, hx) for (t, hx) in self._hover_samples
                                if now - t <= petting.STROKE_WINDOW][-16:]
         self._hover_samples.append((now, float(x)))

@@ -704,15 +704,16 @@ def draw_creature(p, ox, oy, u, state, frame, facing=1, visor=None, cap=None,
     if pocket:
         p.setClipping(False)
         slit_y = oy + POCKET_LIP * u
-        # 화면에 낸 가로 틈: 어두운 입구 + 앞쪽 밝은 립 + 아래 그림자
-        p.fillRect(QRectF(ox - 4 * u, slit_y, (GRID_W + 8) * u, 0.9 * u), EYE)
-        p.fillRect(QRectF(ox - 4 * u, slit_y + 0.9 * u, (GRID_W + 8) * u, 0.6 * u), ORANGE_L)
-        p.fillRect(QRectF(ox - 4 * u, slit_y + 1.5 * u, (GRID_W + 8) * u, 0.3 * u), ORANGE_D)
-        # 립을 잡은 두 손 (립 위에 얹혀 도드라지게: 어두운 윤곽 + 밝은 손등)
-        hy = slit_y - 1.1 * u
+        SLOT = QColor("#141418")      # 화면을 가른 어두운 틈 안쪽(몸이 들어가는 어둠)
+        EDGE = QColor("#C8CCD4")      # 잘린 앞 가장자리(차가운 하이라이트) — 몸색과 대비
+        # 어두운 개구부: 몸 아랫단을 덮어 슬롯 '안으로' 들어가 보이게 (위로 살짝 걸침)
+        p.fillRect(QRectF(ox - 4 * u, slit_y - 0.9 * u, (GRID_W + 8) * u, 1.9 * u), SLOT)
+        p.fillRect(QRectF(ox - 4 * u, slit_y + 1.0 * u, (GRID_W + 8) * u, 0.22 * u), EDGE)
+        # 슬롯 가장자리를 잡은 두 손 (몸색 유지, 어두운 윤곽으로 대비)
+        hy = slit_y - 1.3 * u
         for hx in (ox + 6.6 * u, ox + 13.0 * u):
-            p.fillRect(QRectF(hx - 0.25 * u, hy - 0.25 * u, 2.9 * u, 1.9 * u), EYE)   # 윤곽
-            p.fillRect(QRectF(hx, hy, 2.4 * u, 1.4 * u), ORANGE)                      # 손
+            p.fillRect(QRectF(hx - 0.25 * u, hy - 0.25 * u, 2.9 * u, 1.7 * u), EYE)   # 윤곽
+            p.fillRect(QRectF(hx, hy, 2.4 * u, 1.2 * u), ORANGE)                      # 손
             p.fillRect(QRectF(hx, hy, 2.4 * u, 0.45 * u), ORANGE_L)                   # 손등 하이라이트
 
 

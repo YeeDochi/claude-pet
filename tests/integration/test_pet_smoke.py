@@ -1135,12 +1135,13 @@ def test_petting_reaction_activates_and_expires(pet):
     assert pet.snapshot()["petted"] is False
 
 
-def test_sleeping_pet_not_petted(pet):
+def test_petting_works_even_when_sleeping(pet):
+    # 자는 펫도 쓰다듬으면 반응(하트+방긋). "언제든" 발동.
     pet.claude_state = "sleeping"
     now = time.monotonic()
     for i, x in enumerate([0, 40, 0, 40, 0, 40, 0]):
         pet._maybe_pet(float(x), now + i * 0.1)
-    assert pet.snapshot()["petted"] is False
+    assert pet.snapshot()["petted"] is True
 
 
 def test_pocket_stays_put_ignoring_follow():
