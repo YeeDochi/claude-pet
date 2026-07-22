@@ -439,3 +439,58 @@ def proc_ancestors(pid, max_hops=40):
             break
         cur = nxt
     return acc
+
+
+NOTCH_FALLBACK_W = 200   # ponytail: 실측 전 추정 폭. 릴리즈 후 친구 확인해 보정.
+
+
+def notch_geometry(screen_w, safe_top, aux_left_max_x, aux_right_min_x):
+    """노치 rect 순수 계산. safe_top<=0 -> 노치 없음(None).
+
+    aux_left_max_x/right_min_x 가 둘 다 유효하면 그 사이가 노치 폭,
+    아니면 화면폭 중앙 NOTCH_FALLBACK_W 밴드로 폴백. 반환 (x, y, w, h),
+    스크린 top-left 기준 y=0 상단."""
+    if not safe_top or safe_top <= 0:
+        return None
+    h = int(safe_top)
+    if aux_left_max_x is not None and aux_right_min_x is not None \
+            and aux_right_min_x > aux_left_max_x:
+        x = int(aux_left_max_x)
+        w = int(aux_right_min_x - aux_left_max_x)
+    else:
+        w = NOTCH_FALLBACK_W
+        x = (int(screen_w) - w) // 2
+    return (x, 0, w, h)
+
+
+def notch_rect():
+    """메인 스크린의 노치 rect (x,y,w,h) 또는 None. AppKit 없음/예외 -> None.
+
+    ponytail: safeAreaInsets / auxiliaryTopLeftArea 는 macOS 12+ 전용이고 이
+    개발 박스에서 실행된 적 없다. 좌표 공간(top-left, points) 가정은 릴리즈 후
+    실기 확인 대상. 값이 어긋나면 여기 + notch_geometry 만 손보면 된다."""
+    if AppKit is None:
+        return None
+    try:
+        scr = AppKit.NSScreen.mainScreen()
+        if scr is None:
+            return None
+        frame = scr.frame()
+        screen_w = frame.size.width
+        safe_top = 0
+        insets = getattr(scr, "safeAreaInsets", None)
+        if insets is not None:
+            safe_top = insets().top
+        aux_l = aux_r = None
+        try:
+            la = scr.auxiliaryTopLeftArea()
+            ra = scr.auxiliaryTopRightArea()
+            if la is not None:
+                aux_l = la.origin.x + la.size.width
+            if ra is not None:
+                aux_r = ra.origin.x
+        except Exception:
+            pass
+        return notch_geometry(screen_w, safe_top, aux_l, aux_r)
+    except Exception:
+        return None
