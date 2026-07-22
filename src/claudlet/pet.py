@@ -15,6 +15,10 @@ import sys
 # native platform (cocoa/windows) — forcing xcb there would fail to start.
 if sys.platform.startswith("linux"):
     os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
+    # Silence the harmless "Could not register app ID 'claudlet'" portal warning:
+    # Qt tries to register with the XDG desktop portal but there's no .desktop
+    # file for our app ID. Cosmetic only — has no effect on the pet.
+    os.environ.setdefault("QT_LOGGING_RULES", "qt.qpa.services=false")
 
 import json
 import math
