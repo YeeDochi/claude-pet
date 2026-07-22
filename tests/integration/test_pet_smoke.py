@@ -1608,3 +1608,30 @@ def test_zone_drag_captures_global_not_local_coords():
 
 def test_in_notch_defaults_false(pet):
     assert pet.snapshot()["in_notch"] is False
+
+
+def test_drop_into_notch_stashes(pet):
+    # 노치 rect를 주입(맥 없이 판정 경로만 검증) 후 그 중앙에 드롭
+    pet._notch = (656, 0, 200, 38)
+    pet.x, pet.y = 700 - pet.w / 2, 10 - pet.h / 2
+    pet._moved = True
+    pet._drop_test(756, 19)          # 노치 중앙 근처
+    snap = pet.snapshot()
+    assert snap["in_notch"] is True
+    assert snap["floating"] is True
+
+
+def test_drop_outside_notch_does_not_stash(pet):
+    pet._notch = (656, 0, 200, 38)
+    pet._moved = True
+    pet._drop_test(700, 400)         # 노치 밖
+    assert pet.snapshot()["in_notch"] is False
+
+
+def test_toggle_float_off_clears_notch(pet):
+    pet._notch = (656, 0, 200, 38)
+    pet._drop_test(756, 19)
+    assert pet.snapshot()["in_notch"] is True
+    pet._floating = False
+    pet._sync_float_check()
+    assert pet.snapshot()["in_notch"] is False

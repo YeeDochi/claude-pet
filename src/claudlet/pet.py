@@ -497,6 +497,7 @@ class Pet(QWidget):
         self.dnd = False                     # do-not-disturb
         self._quit_timer = None              # pending SessionEnd -> quit timer
         self._wins = []                      # last window-geometry poll
+        self._notch = None                   # 최근 폴링된 노치 rect (macOS만)
         self._contain = None                 # Win we're living inside, or None
         # host-window tracking: hide the pet when its own console/IDE window is
         # minimized or fully covered, and aim click-to-focus at THAT window. The
@@ -1547,6 +1548,10 @@ class Pet(QWidget):
         except Exception:
             return
         self._on_geom(dump)
+        try:
+            self._notch = self._windows_macos.notch_rect()
+        except Exception:
+            self._notch = None
         self._debug_geom_log(dump)
 
     def _debug_geom_log(self, dump):
@@ -1920,6 +1925,9 @@ class Pet(QWidget):
             self._contain = None
             self.vx = self.vy = 0.0
             self.mode = "roam"
+        elif point_in_notch(int(self.x + self.w / 2),
+                            int(self.y + self.h / 2), self._notch):
+            self._stash_in_notch()
         else:
             vx = vy = 0.0
             if len(self._vel_samples) >= 2:
@@ -1948,6 +1956,29 @@ class Pet(QWidget):
                 self.vx, self.vy = vx, vy
                 self.mode = "thrown"
         self._press_global = None
+
+    def _stash_in_notch(self):
+        """노치에 보관: pocket(주머니) 재해석 — float 켜고 노치 중앙에 스냅, 정지."""
+        self._floating = True
+        self._in_notch = True
+        self.vx = self.vy = 0.0
+        self.mode = "roam"
+        if self._notch is not None:
+            nx, ny, nw, nh = self._notch
+            self.x = nx + nw / 2 - self.w / 2
+            self.y = ny + nh / 2 - self.h / 2
+        self._sync_float_check()
+        self.update()
+
+    def _drop_test(self, gx, gy):
+        """테스트 전용: 펫 중앙을 (gx,gy)로 놓고 release의 노치 분기만 태운다."""
+        self.x = gx - self.w / 2
+        self.y = gy - self.h / 2
+        if point_in_notch(gx, gy, self._notch):
+            self._stash_in_notch()
+        else:
+            self._in_notch = False
+            self._floating = False
 
     def _maybe_pet(self, x, now):
         # 버튼 없는 호버 x를 링버퍼에 넣고, 왕복이면 하트 반응 발동. 어느 상태에서든
@@ -2096,6 +2127,8 @@ class Pet(QWidget):
                             "dur": 0})
 
     def _sync_float_check(self):
+        if not self._floating:
+            self._in_notch = False        # float 해제 = 노치 보관도 해제
         # keep the persistent tray checkbox in step with the float mode
         if getattr(self, "_act_float", None) is not None:
             self._act_float.setChecked(self._floating)
